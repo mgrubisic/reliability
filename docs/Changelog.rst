@@ -5,28 +5,147 @@
 Changelog
 ---------
 
-**Version: 0.5.5 --- Currently unreleased --- due for release around mid-February**
-'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+**Version: 0.5.7 --- Currently unreleased --- due for release in May 2021**
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+**Summary of changes**
+
+Version 0.5.7 of `reliability` completes a part of this project that has taken almost one year by providing confidence intervals for all standard distributions. This release now incorporates confidence intervals for the Gamma_2P, Gamma_3P, and Beta_2P distributions which were the last remaining to be implemented and proved quite a mathematical challenge. In addition to these enhancements, version 0.5.7 contains numerous minor bug fixes.
 
 **New features**
 
+-    Gamma and Beta distributions now have confidence intervals implemented. This involved changes to Distributions, Utils, Fitters, and Probability_plotting modules.
 
 **API Changes**
 
+-    Added "dateformat" argument to Other_functions.crosshairs. This provides datetime formatting capability for x axis crosshair labels and annotations. Useful if the plot contains datetime data on the x axis.
+-    Fully deprecated Other_functions.convert_dataframe_to_grouped_lists
+-    Fully deprecated the ALT_probability_plotting module as this was made redundant by the improvements to ALT_Fitters in v0.5.6
+-    Fit_Weibull_Mixture and Fit_Weibull_CR didn't accept kwargs. All kwargs are now passed directly to matplotlib making it possible to change color, label, linestyle, etc on the probability plot of these distributions.
 
 **Bug Fixes**
 
+-    Reliability_testing.reliability_test_planner had an error when solving for number of failures. It gave a number 1 more than it should. The number of failures should ensure the MTBF is always above the minimum requirement.
+-    Incorrect formula for stress strength interference was used. This created negligible difference at small probabilities of failure but when stress.mean > strength.mean the difference was significant. Thanks to Jake Sadie for discovering this.
+-    All fitters that extracted the covariance (eg. Cov_alpha_beta) took the abs value. This was incorrect as covariance can be negative. This may have led to minor errors in some of the confidence intervals on the plots as covariance is used for these confidence intervals.
+-    Other_functions.distribution_explorer had a bug due to a change that matplotlib made to the type of error raised. This caused axes to be removed and not redrawn when the radio buttons were toggled. This has been fixed by hiding the axes rather than removing them.
+-    CI_type of None was not being passed from Fitters resulting in an inability to hide the confidence intervals on the plot as the presence of None resulted in the default of 'time' being used. CI_type=None as a kwarg from fitters will now supress the confidence intervals in the probability plot.
+
+**Other**
+
+-    Improvements to API documentation. This is a long term work in progress. At this stage, the API documentation formatting has been completed for `Distributions <https://reliability.readthedocs.io/en/latest/API/Distributions.html>`_ and `Fitters <https://reliability.readthedocs.io/en/latest/API/Fitters.html>`_.
+
+**Version: 0.5.6 --- Released: 7 March 2021**
+'''''''''''''''''''''''''''''''''''''''''''''
+
+**Summary of changes**
+
+Version 0.5.6 of `reliability` is focused on enhancing the accelerated life testing (ALT) section of the library. This release includes a complete rewrite of ALT fitters and supporting Utils, comprising around 13000 lines of code (about 28% of the total codebase). This is the biggest update in terms of lines of code for this library. The rewrite also includes new ALT models (bringing the total from 20 to 24) and tremendous speed enhancements. In addition to the rewrites done to ALT_fitters, there are numerous other small enhancements and bug fixes detailed below.
+
+**New features**
+
+-    Fitters.Fit_Everything now includes an option to show_best_distribution_probability_plot. Default is True.
+-    Each of the functions within ALT fitters now has a goodness of fit dataframe printed with results.
+-    Other_functions.make_ALT_data is a new function that enables ALT data to be created. This is useful for testing the functions within ALT_Fitters.
+-    ALT fitters was sensitive to the initial guess as it used curve_fit. The initial guess has been changed to use least squares to obtain the initial guess since the stress-life equations are all linearizable.
+-    ALT_fitters.Fit_Everything_ALT is a new function that enables users to fit all the ALT models.
+-    ALT_fitters now has Dual_Power models, bringing the total available models to 24.
+
+**API Changes**
+
+-    The ALT_probability_plotting module has been deprecated. Functions will still run with a Deprecation Warning. This was done because all the functionality has been included in the new ALT_fitters module.
+-    ALT_fitters functions have several changes to the inputs and outputs. Please see the documentation for detail of the new input and output arguments.
+-    All the probability plots now have a new argument "show_scatter_points" which allows the scatter plot to be hidden if set to False. This was implemented based on `this issue <https://github.com/MatthewReid854/reliability/pull/19>`_.
+
+**Bug Fixes**
+
+-    Failure to fit any of the ALT_fitters will now report the failure and run with the initial guess, rather than crashing.
+-    make_right_censored_data used a seed but this seed was ineffective due to the use of both the random module and numpy.random. Changed to use only numpy.random so now the seed achieves repeatability.
+-    ALT_fitters had incorrect confidence intervals for b in Exponential, a in Power, and c in Dual-Exponential
+-    ALT_fitters Eyring models would crash if not given right_censored data.
+-    Some ALT models didn't accept data with < 2 failures at each stress level. The new requirement is to have at least as many failures as there are parameters in the model. It is possible to have a single failure at each stress level and still fit the model.
+-    The percentiles dataframe in Fit_Weibull_3P had the first column set as the index. This has been corrected to retain the original index. Identified in `this issue <https://github.com/MatthewReid854/reliability/pull/20>`_.
+-    The function plotting_positions sorted the failure data and returned sorted lists. This made it difficult if users wanted to specify different colors for each of the points. plotting_positions now returns the results in the same order the input was given, as per `this issue <https://github.com/MatthewReid854/reliability/pull/19>`_.
+-    Some datasets with some optimisers could cause a crash due to a non-invertable hessian matrix. This error is now caught and a warning is issued about the confidence intervals without causing a crash.
+
+**Other**
+
+-    Minor improvement to scaling and text positions in stress_strain_diagram
+-    CodeCov was broken when the continuous integration was changed from Travis_CI to GitHub Actions. CodeCov reporting is now fixed and the coverage will be improved upon progressively.
+-    All the Fitters now return the axes handles in the probability_plot output object.
+-    Started work on API documentation. This is already available using the help function in Python, but adding it to `readthedocs` makes it much easier to read.
+-    Fit_Expon_1P and Fit_Expon_2P are now fully deprecated and have been removed. These were replaced by Fit_Exponential_1P and Fit_Exponential_2P in version 0.5.4 (released Nov 2020).
+-    The Stress_strength module is now fully deprecated and has been removed. The functions from within this module were renamed and moved to the Other_functions module in version 0.5.5 (released Jan 2021).
+
+**Version: 0.5.5 --- Released: 6 January 2021**
+'''''''''''''''''''''''''''''''''''''''''''''''
+
+**Summary of changes**
+
+Version 0.5.5 of `reliability` has significant improvements to the initial guess methods for the Fitters functions. This makes all the fitters much faster and more accurate. There are also many new enhancements including functions to help with importing data from Excel and converting data between different formats. There are many bug fixes in this release. The other major change is in code formatting using Black.
+
+**New features**
+
+-    All of the standard fitters have been significantly improved with the following features:
+
+     -    Least Squares estimation is now available. Previously the fit was solely achieved using MLE. MLE remains the default.
+     -    For the least squares estimation, users may select RRX, RRY, LS. RRX and RRY are rank regression on X and rank regression on Y respectively. LS will perform both RRX and RRY and use the one with the best log-likelihood.
+     -    There are 3 optimisers to choose from for all of the standard fitters. These are L-BFGS-B, TNC, powell. Previously there was only an option for some of the fitters and the optimiser was not standardized. L-BFGS-B is default if there is less than 97% censored data, otherwise TNC is the default optimizer above 97% censored data.
+     -    Removal of scipy as the method to obtain the initial guess for MLE. With the inclusion of least squares estimation, the MLE method is much faster since it is not reliant on scipy to provide an initial guess (which failed to account for right censored data and often gave a poor guess).
+
+-    Addition of a new module for converting data between different formats. The module reliability.Convert_data allows for conversion between FR (failures, right censored), FNRN (failures, number of failures, right censored, number of right censored), and XCN (event time, censoring code, number of events). It also provides a streamlined process for importing data from xlsx files, for exporting data to xlsx files, and for printing the dataset in a dataframe for easy visualisation.
+
+**API Changes**
+
+-    All of the standard fitters now include method and optimizer arguments.
+-    The non-standard fitters (Fit_Everything, Fit_Weibull_Mixture and Fit_Weibull_CR) now include optimizer argument.
+-    Fitters.Fit_Weibull_2P, Fitters.Fit_Weibull_3P, Fitters.Fit_Weibull_2P_grouped have had some changes to their input arguments so that they all include method and optimizer. The initial_guess_method option is gone as it has been replaced by least squares estimation.
+-    The function Other_functions.Convert_dataframe_to_grouped lists is now deprecated. The functionality is captured within the new Convert_data module.
+-    The entire Stress_strength module has been deprecated. This is because there were (and likely only ever would be) two functions in this module which is not enough to justify a separate module. The two function have been moved into Other_functions and renamed. Full deprecation will occur in March 2021 (in version 0.5.6), and until then a DeprecationWarning will be printed and the old functions will still work. The renaming is as follows:
+
+     -    reliability.Stress_strength.Probability_of_failure :math:`\Rightarrow` reliability.Other_functions.stress_strength
+     -    reliability.Stress_strength.Probability_of_failure_normdist :math:`\Rightarrow` reliability.Other_functions.stress_strength_normal
+
+**Bug Fixes**
+
+-    fixed a bug in Reliability_testing.reliability_test_duration in which certain inputs resulted in 1 failure and the plot limits caused a crash when left=right limit.
+-    fixed a bug in ALT_Fitters where the CI string in the results title would be rounded to an integer. This would cause 0.975 to appear as 97% rather than 97.5%.
+-    fixed a bug in Fit_Weibull_Mixture and Fit_Weibull_CR. When given input as a list of integers, it failed to convert these to floats and then crashed due to an error with type conversion error between int32 and float64
+-    probability_plot_xylims had a bug when there is only 1 datapoint as xlower=xupper and ylower=yupper. Cases with only 1 datapoint are now handled appropriately.
+-    Fitters had a bug where force_beta or force_sigma needed to be a float. It would crash if an int was supplied.
+-    Fixed a bug in all the ALT fitters where a crash would occur when use level stress was not provided. This was due to the use life being referenced in all cases rather than just in cases where the use level stress was specified.
+-    ROCOF had a bug that was only evident when the ROCOF was found to be constant. This was caused by a formula using n instead of n+1 for the sample size.
 
 **Other**
 
 -    Utils has 2 new functions (linear_regression and least_squares). These are now used by Fitters to obtain the least squares estimates.
+-    The format of all the printed fitters outputs has been improved. More detail is provided, goodness of fit parameters are provided and the formatting is better.
+-    Dataframes everywhere are formatted better to retain the index but not display it.
+-    Text output for sample_size_no_failures.
+-    Text output for one_sample_proportion.
+-    Text output for two_proportion_test.
+-    one_sample_proportion will now return 0 or 1 for the lower and upper reliability estimates instead of NaN in cases when there are all failures or all successes.
+-    ALT_Fitters has 2 new results: alpha_at_use_stress (mu for Lognormal and Normal, Lambda for Exponential) and distribution_at_use_stress. These are provided for convenience and were able to be calculated from the previous results.
+-    Title added to all nonparametric results printed.
+-    Bold and underline enhancements to results titles in all ALT_fitters and in MCF_parametric and MCF_nonparametric.
+-    Changed Build and Test from Travis CI to GitHub Actions.
+-    Reformatted all code using `Black <https://black.readthedocs.io/en/stable/>`_. This resulted in a significant increase in the lines of code (LOC) count but in actual fact there was not that many new lines added.
+-    Added another standard dataset called "mixture" and an ALT dataset called "ALT_temperature4".
+-    In all the ALT fitters, the initial guess process is now bypassed if an initial guess is specified by the user. Previously the initial guess was always obtained by curve_fit but not used if a user specified initial guess was given. This change enhances speed and enables a failure of curve_fit to be bypassed through specifying an accurate initial guess.
+-    Documentation updates to reflect version 0.5.5 API changes and results printed.
+-    Updated the Logo for `reliability` and provided the `code <https://reliability.readthedocs.io/en/latest/Logo.html>`_ for generating the new logo.
+-    Changed the structure of the README to put the link to the documentation up higher.
 
 **Version: 0.5.4 --- Released: 7 November 2020**
 ''''''''''''''''''''''''''''''''''''''''''''''''
 
+**Summary of changes**
+
+Version 0.5.4 of `reliability` brings in confidence intervals for many more distributions, as well as the inclusion of the Gumbel distribution. Due to the time it took to get the confidence intervals working, there have been many other minor changes to formatting of plots and printed results that are included in this release.
+
 **New features**
 
--    Confidence intervals added for Normal, Lognormal, Loglogistic, and Gumbel Distributions. *Confidence intervals for the Gamma and Beta Distributions will be part of 0.5.5 in Feb 2021*
+-    Confidence intervals added for Normal, Lognormal, Loglogistic, and Gumbel Distributions. *Confidence intervals for the Gamma and Beta Distributions will be part of 0.5.6 in Feb/Mar 2021*
 -    Added Gumbel_Distribution to Distributions
 -    Added Gumbel_Distribution to Other_functions.distribution_explorer
 -    Added Fit_Gumbel_2P to Fitters
@@ -51,8 +170,8 @@ Changelog
 
 -    Other_functions.distribution_explorer had a bug caused by a recent update to matplotlib. When a non-existent axis was deleted, the error matplotlib generated was a ValueError and that is now changed to AttributeError which was not being appropriately handled by distribution_explorer.
 -    All of the standard distributions expected a list or array for their 5 functions (PDF, CDF, SF, HF, CHF). A command like this "dist.SF(1)" would cause an error and should have been entered as dist.SF([1]). This is now fixed such that if the input is not in a list or array then it will no longer produce an error and the output type will be np.float64.
--   Within Fit_Everything if only 3 points were entered some of the AIC values would be 'Insufficient Data'. If the user also specified sort_by='AIC' then an error would be raised by pandas trying to sort by strings and numbers. In this case the sort_by method will automatically be changed to BIC.
--   The Exponential confidence intervals were invisibe if there were only 2 failures for the fit. This was cause by the upper CI reaching 1 which is effectively infinity on a probability plot. 1's are now filtered out so the CI will always appear.
+-    Within Fit_Everything if only 3 points were entered some of the AIC values would be 'Insufficient Data'. If the user also specified sort_by='AIC' then an error would be raised by pandas trying to sort by strings and numbers. In this case the sort_by method will automatically be changed to BIC.
+-    The Exponential confidence intervals were invisibe if there were only 2 failures for the fit. This was cause by the upper CI reaching 1 which is effectively infinity on a probability plot. 1's are now filtered out so the CI will always appear.
 
 **Other**
 
@@ -67,11 +186,16 @@ Changelog
 -    Improved the Mixture Model PDF and HF using the actual formula rather than taking the numerical derivatives of CDF and CHF respectively.
 -    Fit_Everything can now accept a minimum of 2 failures (previously the minimum was 3) and it will automatically exclude the 3P distributions
 -    All warnings throughout reliability are now printed in red.
+-    New Utils function colorprint. This provides a simple API for printing in color, bold, underline and italic.
 -    Improved input checking for all the fitters. This has been standardised in a Utils function so nothing is missed for each of the fitters.
 -    Probability_plotting.plot_points previously has a minimum of 2 failures required to plot the points. The minimum is now 1 failure required.
 
 **Version: 0.5.3 --- Released: 29 September 2020**
 ''''''''''''''''''''''''''''''''''''''''''''''''''
+
+**Summary of changes**
+
+Version 0.5.3 of `reliability` is a major release, adding in the Loglogistic distribution, the RankAdjustment nonparametric method, a new goodness of fit measure (anderson darling) and many other new functions.
 
 **New features**
 
@@ -102,9 +226,9 @@ Changelog
 **Bug Fixes**
 
 -    Fixed autoscale for cases where the HF is constant so it no longer lies along the yaxis upper limit
--    Fit_Everything had a bug in the default xvals for the Beta_Distribution's histogram which caused an error in some special cases. This is now resolved.
+-    Fit_Everything had a bug in the default xvals for the Beta_Distribution's histogram which caused an error in some special cases.
 -    All the quantile functions in each distribution didn't accept np.float64 and raised an error. They now accept this data type.
--    The AICc and BIC in all the ALT_fitters was slightly wrong due to a small coding error. This is now fixed.
+-    The AICc and BIC in all the ALT_fitters was slightly wrong due to a small coding error.
 
 **Other**
 
@@ -125,6 +249,9 @@ Changelog
 
 **Version: 0.5.2 --- Released: 14 August 2020**
 '''''''''''''''''''''''''''''''''''''''''''''''
+**Summary of changes**
+
+Version 0.5.2 of `reliability` includes two special distributions, the mixture distribution and the competing risks distribution, along with their respective fitters. Autoscaling is also a great improvement to ensure that plots appear mostly the same, just with their axes scaled appropriately.
 
 **New features**
 
@@ -162,6 +289,10 @@ Changelog
 **Version: 0.5.1 --- Released: 08 July 2020**
 '''''''''''''''''''''''''''''''''''''''''''''
 
+**Summary of changes**
+
+Version 0.5.1 of `reliability` is a fairly minor release.
+
 **New features**
 
 -    More efficient method used within Other_functions.similar_distributions. Results are always consistent and more accurate now.
@@ -189,6 +320,10 @@ Changelog
 
 **Version: 0.5.0 --- Released: 04 July 2020**
 '''''''''''''''''''''''''''''''''''''''''''''
+
+**Summary of changes**
+
+Version 0.5.0 of `reliability` is a major release that includes the first introduction of confidence intervals, and many other new features. Significant structural changes have also been made including the use of a Utils function and the the introduction of automated testing.
 
 **New features**
 

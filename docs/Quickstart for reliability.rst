@@ -46,9 +46,25 @@ In this example, we will create a Weibull Distribution, and from that distributi
     plot_points(failures=data, func='SF')  # overlays the original data on the survival function
     plt.legend()
     plt.show()
+    
+    '''
+    Results from Fit_Weibull_2P (95% CI):
+    Analysis method: Maximum Likelihood Estimation (MLE)
+    Failures / Right censored: 20/0 (0% right censored) 
 
-.. image:: images/quickstart2.png
+    Parameter  Point Estimate  Standard Error  Lower CI  Upper CI
+        Alpha         28.1696         3.57032   21.9733   36.1131
+         Beta         1.86309         0.32449   1.32428   2.62111 
 
-A key feature of ``reliability`` is that probability distributions are created as objects, and these objects have many properties (such as the mean) that are set once the parameters of the distribution are defined. Using the dot operator allows us to access these properties as well as a large number of methods (such as drawing random samples as seen in the example above).
+    Goodness of fit    Value
+     Log-likelihood -79.5482
+               AICc  163.802
+                BIC  165.088
+                 AD 0.837278 
+    '''
+
+.. image:: images/quickstart3.png
+
+A key feature of `reliability` is that probability distributions are created as objects, and these objects have many properties (such as the mean) that are set once the parameters of the distribution are defined. Using the dot operator allows us to access these properties as well as a large number of methods (such as drawing random samples as seen in the example above).
 
 Each distribution may be visualised in five different plots. These are the Probability Density Function (PDF), Cumulative Distribution Function (CDF), Survival Function (SF) [also known as the reliabilty function], Hazard Function (HF), and the Cumulative Hazard Function (CHF). Accessing the plot of any of these is as easy as any of the other methods. Eg. ``dist.SF()`` in the above example is what plots the survival function using the distribution object that was returned from the fitter.

@@ -29,7 +29,7 @@ def test_ROCOF():
     assert results.trend == 'worsening'
     assert_allclose(results.Beta_hat, 1.5880533880966818, rtol=rtol, atol=atol)
     assert_allclose(results.Lambda_hat, 3.702728848984535e-05, rtol=rtol, atol=atol)
-    assert results.ROCOF == 'ROCOF is not provided when trend is not constant. Use Beta_hat and Lambda_hat to calculate.'
+    assert results.ROCOF == 'ROCOF is not provided when trend is not constant. Use Beta_hat and Lambda_hat to calculate ROCOF at a given time t.'
 
 def test_MCF_nonparametric():
     times = MCF_1().times
