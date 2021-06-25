@@ -5,16 +5,39 @@
 Changelog
 ---------
 
-**Version: 0.5.7 --- Currently unreleased --- due for release in May 2021**
-'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+**Version: 0.5.8 --- Currently Unreleased --- Due for release around October 2021**
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
 **Summary of changes**
 
-Version 0.5.7 of `reliability` completes a part of this project that has taken almost one year by providing confidence intervals for all standard distributions. This release now incorporates confidence intervals for the Gamma_2P, Gamma_3P, and Beta_2P distributions which were the last remaining to be implemented and proved quite a mathematical challenge. In addition to these enhancements, version 0.5.7 contains numerous minor bug fixes.
+-    TBA
 
 **New features**
 
--    Gamma and Beta distributions now have confidence intervals implemented. This involved changes to Distributions, Utils, Fitters, and Probability_plotting modules.
+-    TBA
+
+**API Changes**
+
+-    TBA
+
+**Bug Fixes**
+
+-    TBA
+
+**Other**
+
+-    TBA
+
+**Version: 0.5.7 --- Released: 25 June 2021**
+'''''''''''''''''''''''''''''''''''''''''''''
+
+**Summary of changes**
+
+Version 0.5.7 of `reliability` completes a part of this project that has taken almost one year by providing confidence intervals for all standard distributions (except Beta_2P). This release now incorporates confidence intervals for the Gamma_2P and Gamma_3P distributions which were the last remaining to be implemented and proved quite a mathematical challenge. In addition to these enhancements, version 0.5.7 contains numerous minor bug fixes and API changes.
+
+**New features**
+
+-    Fit_Gamma_2P and Fit_Gamma_3P now have confidence intervals implemented. This involved changes to Distributions, Utils, Fitters, and Probability_plotting modules.
 
 **API Changes**
 
@@ -22,6 +45,10 @@ Version 0.5.7 of `reliability` completes a part of this project that has taken a
 -    Fully deprecated Other_functions.convert_dataframe_to_grouped_lists
 -    Fully deprecated the ALT_probability_plotting module as this was made redundant by the improvements to ALT_Fitters in v0.5.6
 -    Fit_Weibull_Mixture and Fit_Weibull_CR didn't accept kwargs. All kwargs are now passed directly to matplotlib making it possible to change color, label, linestyle, etc on the probability plot of these distributions.
+-    In stress_strength and stress_strength_normal the argument show_distribution_plot has been changed to show_plot. This is done for simplicity and standardisation.
+-    The outputs from all nonparametric functions (.KM, .RA, .NA) are now arrays. Previously these were lists.
+-    Repairable_systems.optimal_replacement_time argument "show_plot" has been changed to "show_time_plot". There is another argument "show_ratio_plot" which has been added. While normally expecting True/False, these arguments will also accept axes subclasses if you want them to plot on a specific axes.
+-    All of the ALT_Fitters (except Fit_Everything_ALT) will now accept an axes object into their show_probability_plot and show_life_stress_plot arguments. If an axes object is passed, the plot will be added to the axes specified. This enables the plots to be placed in subplots rather than always being in their own figures.
 
 **Bug Fixes**
 
@@ -30,10 +57,14 @@ Version 0.5.7 of `reliability` completes a part of this project that has taken a
 -    All fitters that extracted the covariance (eg. Cov_alpha_beta) took the abs value. This was incorrect as covariance can be negative. This may have led to minor errors in some of the confidence intervals on the plots as covariance is used for these confidence intervals.
 -    Other_functions.distribution_explorer had a bug due to a change that matplotlib made to the type of error raised. This caused axes to be removed and not redrawn when the radio buttons were toggled. This has been fixed by hiding the axes rather than removing them.
 -    CI_type of None was not being passed from Fitters resulting in an inability to hide the confidence intervals on the plot as the presence of None resulted in the default of 'time' being used. CI_type=None as a kwarg from fitters will now supress the confidence intervals in the probability plot.
+-    Exponential_probability_plot and Exponential_probability_plot_Weibull_Scale now allow fitting with 1 failure. Previously required 2 failures. This change was made because Fit_Exponential_1P only requires 1 failure so the limitation was rule based not a mathematical limitation.
+-    Minor fixes to how the confidence intervals are prepared to ensure the arrays are cleaned of illegal values caused by precision errors.
 
 **Other**
 
--    Improvements to API documentation. This is a long term work in progress. At this stage, the API documentation formatting has been completed for `Distributions <https://reliability.readthedocs.io/en/latest/API/Distributions.html>`_ and `Fitters <https://reliability.readthedocs.io/en/latest/API/Fitters.html>`_.
+-    Improvements to API documentation. This has been a long term work in progress, but is nearly finished.
+-    Speed enhancement (x10) to Repairable_systems.optimal_replacement_time and the addition of a new plot (cost ratio vs replacement interval). Thanks to Ed Burrows for contributing the speed enhancement.
+-    chi2test and KStest will no longer produce their own figure and show the plot automatically. This now enables the plot to be added to an existing figure as a subplot. If not part of a subplot the behaviour is unchanged except that you now need to use plt.show() to show the plot.
 
 **Version: 0.5.6 --- Released: 7 March 2021**
 '''''''''''''''''''''''''''''''''''''''''''''

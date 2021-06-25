@@ -76,9 +76,9 @@ def one_sample_proportion(trials=None, successes=None, CI=0.95, print_results=Tr
     else:
         n = 2
     if type(trials) is not int:
-        raise ValueError('trials must be an integer')
+        raise ValueError("trials must be an integer")
     if type(successes) is not int:
-        raise ValueError('successes must be an integer')
+        raise ValueError("successes must be an integer")
 
     V1_lower = 2 * successes
     V2_lower = 2 * (trials - successes + 1)
@@ -316,7 +316,7 @@ def sample_size_no_failures(
     return n
 
 
-def sequential_samling_chart(
+def sequential_sampling_chart(
     p1,
     p2,
     alpha,
@@ -395,14 +395,14 @@ def sequential_samling_chart(
             "test_results must be a binary array or list with 1 as failures and 0 as successes. eg. [0 0 0 1] represents 3 successes and 1 failure."
         )
 
-    if alpha <=0 or alpha >= 1:
-        raise ValueError('alpha must be between 0 and 1')
-    if beta <=0 or beta >= 1:
-        raise ValueError('beta must be between 0 and 1')
-    if p1 <=0 or p1 >= 1:
-        raise ValueError('p1 must be between 0 and 1')
-    if p2 <=0 or p2 >= 1:
-        raise ValueError('p2 must be between 0 and 1')
+    if alpha <= 0 or alpha >= 1:
+        raise ValueError("alpha must be between 0 and 1")
+    if beta <= 0 or beta >= 1:
+        raise ValueError("beta must be between 0 and 1")
+    if p1 <= 0 or p1 >= 1:
+        raise ValueError("p1 must be between 0 and 1")
+    if p2 <= 0 or p2 >= 1:
+        raise ValueError("p2 must be between 0 and 1")
 
     a = 1 - alpha
     b = 1 - beta
@@ -418,7 +418,7 @@ def sequential_samling_chart(
 
     upper_line = np.ones_like(xvals) * (s * max_samples - h1)
     lower_line_range = np.linspace(-h2 / s, max_samples, max_samples + 1)
-    acceptance_line2 = (s * lower_line_range + h2)
+    acceptance_line2 = s * lower_line_range + h2
     # this is the visible part of the line that starts beyond x=0
 
     acceptance_array = np.asarray(np.floor(s * xvals + h2), dtype=int)
@@ -510,17 +510,13 @@ class reliability_test_planner:
     The function reliability_test_planner is used to solves for unknown test
     planning variables, given known variables. The Chi-squared distribution is
     used to find the lower confidence bound on MTBF for a given test duration,
-    number of failures, and specified confidence interval. The equation for
-    time-terminated tests is:
+    number of failures, and specified confidence interval.
 
-    :math:`MTBF = \frac{2 × test_duration}{\chi^{2}\left(CI, 2 × number_of_failures + p\right)}`
-
-    This equation can be rearranged to solve for any of the 4 variables, given
-    the other 3. For example, you may want to know how many failures you are
-    allowed to have in a given test duration to achieve a particular MTBF. The
-    user must specify any 3 out of the 4 variables (not including one_sided,
-    print_results, or time_terminated) and the remaining variable will be
-    calculated.
+    The function will solve for any of the 4 variables, given the other 3. For
+    example, you may want to know how many failures you are allowed to have in a
+    given test duration to achieve a particular MTBF. The user must specify any
+    3 out of the 4 variables (not including one_sided, print_results, or
+    time_terminated) and the remaining variable will be calculated.
 
     Parameters
     ----------
@@ -561,6 +557,9 @@ class reliability_test_planner:
 
     Notes
     -----
+    Please see the `documentation <https://reliability.readthedocs.io/en/latest/Reliability%20test%20planner.html>`_
+    for more detail on the equations used.
+
     The returned values will match the input values with the exception of the
     input that was not provided.
 
@@ -923,8 +922,8 @@ class chi2test:
     print_results : bool, optional
         If True the results will be printed. Default = True
     show_plot : bool, optional
-        If True a plot of the distribution and histogram will be shown. Default
-         = True.
+        If True a plot of the distribution and histogram will be generated.
+        Default = True.
 
     Returns
     -------
@@ -1077,7 +1076,6 @@ class chi2test:
             )
 
         if show_plot is True:
-            plt.figure("Chi-squared test")
             bin_edges_to_plot = np.nan_to_num(
                 x=bin_edges, posinf=max(data) * 1000, neginf=min(data)
             )
@@ -1105,7 +1103,6 @@ class chi2test:
             plt.ylim(0, 1.1)
             plt.legend()
             plt.subplots_adjust(top=0.9)
-            plt.show()
 
 
 class KStest:
@@ -1131,8 +1128,8 @@ class KStest:
     print_results : bool, optional
         If True the results will be printed. Default = True
     show_plot : bool, optional
-        If True a plot of the distribution CDF and empirical CDF will be shown.
-        Default = True.
+        If True a plot of the distribution CDF and empirical CDF will be
+        generated. Default = True.
 
     Returns
     -------
@@ -1217,7 +1214,6 @@ class KStest:
             )
 
         if show_plot is True:
-            plt.figure("Kolmogorov-Smirnov test")
             Sn_all = np.hstack([Sn_1, 1])
             SN_plot_x = [0]
             SN_plot_y = [0]
@@ -1241,4 +1237,3 @@ class KStest:
             )
             plt.legend()
             plt.subplots_adjust(top=0.9)
-            plt.show()
