@@ -1,8 +1,8 @@
 import numpy as np
+from numpy.linalg import LinAlgError
 import scipy.stats as ss
 import pandas as pd
 import matplotlib.pyplot as plt
-from matplotlib.axes import SubplotBase
 import autograd.numpy as anp
 from autograd.scipy.special import erf
 from autograd.differential_operators import hessian
@@ -18,7 +18,7 @@ from reliability.Utils import (
     round_to_decimals,
     ALT_fitters_input_checking,
     ALT_least_squares,
-    ALT_MLE_optimisation,
+    ALT_MLE_optimization,
     life_stress_plot,
     ALT_prob_plot,
 )
@@ -30,88 +30,127 @@ shape_change_threshold = 0.5
 
 class Fit_Everything_ALT:
     """
-    Fit_Everything_ALT
-    This function will fit all available ALT models for the data you enter, which may include right censored data.
+    This function will fit all available ALT models for the data you enter,
+    which may include right censored data.
 
-    ALT models are either single stress (Exponential, Eyring, Power) or dual stress (Dual_Exponential, Power_Exponential, Dual_Power).
-    Depending on the data you enter (ie. whether failure_stress_2 is provided), the applicable set of ALT models will be fitted.
+    ALT models are either single stress (Exponential, Eyring, Power) or dual
+    stress (Dual_Exponential, Power_Exponential, Dual_Power).
 
-    Inputs:
-    failures - an array or list of the failure times (this does not need to be sorted).
-    failure_stress_1 - an array or list of the corresponding stresses (such as temperature or voltage) at which each failure occurred.
-        This must match the length of failures as each failure is tied to a failure stress.
-    failure_stress_2 - an array or list of the corresponding stresses (such as temperature or voltage) at which each failure occurred.
-        This must match the length of failures as each failure is tied to a failure stress.
-        Optional input. Providing this will trigger the use of dual stress models.
-        Leaving this empty will trigger the use of single stress models.
-    right_censored - an array or list of the right failure times (this does not need to be sorted). Optional Input.
-    right_censored_stress_1 - an array or list of the corresponding stresses (such as temperature or voltage) at which each right_censored data point was obtained.
-        This must match the length of right_censored as each right_censored value is tied to a right_censored stress.
-    right_censored_stress_2 - an array or list of the corresponding stresses (such as temperature or voltage) at which each right_censored data point was obtained.
-        This must match the length of right_censored as each right_censored value is tied to a right_censored stress.
-        Conditionally optional input. This must be provided if failure_stress_2 is provided.
-    use_level_stress - The use level stress at which you want to know the mean life. Optional input.
-        This must be a list [stress_1,stress_2] if failure_stress_2 is provided.
-    print_results - True/False. Default is True
-    show_probability_plot - True/False. Default is True. Provides a probability plot of each of the fitted ALT model.
-    show_best_distribution_probability_plot - True/False. Defaults to True. Provides a probability plot in a new figure of the best ALT model.
-    CI - confidence interval for estimating confidence limits on parameters. Must be between 0 and 1. Default is 0.95 for 95% CI.
-    optimizer - 'TNC', 'L-BFGS-B', 'powell'. Default is 'TNC'. These are all bound constrained methods. If the bound constrained method fails, nelder-mead will be used. If nelder-mead fails the initial guess (using least squares) will be returned with a warning.
-    sort_by - goodness of fit test to sort results by. Must be 'BIC','AICc', or 'Log-likelihood'. Default is BIC.
-    exclude - list or array of strings specifying which distributions to exclude. Default is None. Options are:
-        Weibull_Exponential
-        Weibull_Eyring
-        Weibull_Power
-        Weibull_Dual_Exponential
-        Weibull_Power_Exponential
-        Weibull_Dual_Power
-        Lognormal_Exponential
-        Lognormal_Eyring
-        Lognormal_Power
-        Lognormal_Dual_Exponential
-        Lognormal_Power_Exponential
-        Lognormal_Dual_Power
-        Normal_Exponential
-        Normal_Eyring
-        Normal_Power
-        Normal_Dual_Exponential
-        Normal_Power_Exponential
-        Normal_Dual_Power
-        Exponential_Exponential
-        Exponential_Eyring
-        Exponential_Power
-        Exponential_Dual_Exponential
-        Exponential_Power_Exponential
-        Exponential_Dual_Power
+    Depending on the data you enter (ie. whether failure_stress_2 is provided),
+    the applicable set of ALT models will be fitted.
 
-    Outputs:
-    results - the dataframe of results. Fitted parameters in this dataframe may be accessed by name. See below example.
-    best_model_name - the name of the best fitting ALT model. E.g. 'Weibull_Exponential'. See above list for exclude.
-    best_model_at_use_stress - a distribution object created based on the parameters of the best fitting ALT model at the use stress.
-        This is only provided if the use_level_stress is provided. This is because use_level_stress is required to find the scale parameter.
-    parameters and goodness of fit results for each fitted model. For example, the Weibull_Exponential model values are:
-        Weibull_Exponential_a
-        Weibull_Exponential_b
-        Weibull_Exponential_beta
-        Weibull_Exponential_BIC
-        Weibull_Exponential_AICc
+    Parameters
+    ----------
+    failures : array, list
+        The failure data.
+    failure_stress_1 : array, list
+        The corresponding stresses (such as temperature or voltage) at which
+        each failure occurred. This must match the length of failures as each
+        failure is tied to a failure stress.
+    failure_stress_2 : array, list, optional
+        The corresponding stresses (such as temperature or voltage) at which
+        each failure occurred. This must match the length of failures as each
+        failure is tied to a failure stress. Optional input. Providing this will
+        trigger the use of dual stress models. Leaving this empty will trigger
+        the use of single stress models.
+    right_censored : array, list, optional
+        The right censored failure times. Optional input.
+    right_censored_stress_1 : array, list, optional
+        The corresponding stresses (such as temperature or voltage) at which
+        each right_censored data point was obtained. This must match the length
+        of right_censored as each right_censored value is tied to a
+        right_censored stress. Conditionally optional input. This must be
+        provided if right_censored is provided.
+    right_censored_stress_2 : array, list, optional
+        The corresponding stresses (such as temperature or voltage) at which
+        each right_censored data point was obtained. This must match the length
+        of right_censored as each right_censored value is tied to a
+        right_censored stress. Conditionally optional input. This must be
+        provided if failure_stress_2 is provided.
+    use_level_stress : int, float, list, array, optional
+        The use level stress at which you want to know the mean life. Optional
+        input. This must be a list or array [stress_1,stress_2] if
+        failure_stress_2 is provided and you want to know the mean life.
+    print_results : bool, optional
+        True/False. Default is True. Prints the results to the console.
+    show_probability_plot : bool, optional
+        True/False. Default is True. Provides a probability plot of each of the
+        fitted ALT model.
+    show_best_distribution_probability_plot : bool, optional
+        True/False. Defaults to True. Provides a probability plot in a new
+        figure of the best ALT model.
+    CI : float, optional
+        Confidence interval for estimating confidence limits on parameters. Must
+        be between 0 and 1. Default is 0.95 for 95% CI.
+    optimizer : str, optional
+        The optimization algorithm used to find the solution. Must be either
+        'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'. Specifying the optimizer
+        will result in that optimizer being used. To use all of these specify
+        'best' and the best result will be returned. The default behaviour is to
+        try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and
+        'powell') and stop once one of the optimizers finds a solution. If the
+        optimizer fails, the initial guess will be returned.
+        For more detail see the
+        `documentation <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
+    sort_by : str, optional
+        Goodness of fit test to sort results by. Must be 'BIC','AICc', or
+        'Log-likelihood'. Default is 'BIC'.
+    exclude : list, array, optional
+        A list or array of strings specifying which distributions to exclude.
+        Default is None. Options are: Weibull_Exponential, Weibull_Eyring,
+        Weibull_Power, Weibull_Dual_Exponential, Weibull_Power_Exponential,
+        Weibull_Dual_Power, Lognormal_Exponential, Lognormal_Eyring,
+        Lognormal_Power, Lognormal_Dual_Exponential,
+        Lognormal_Power_Exponential, Lognormal_Dual_Power, Normal_Exponential,
+        Normal_Eyring, Normal_Power, Normal_Dual_Exponential,
+        Normal_Power_Exponential, Normal_Dual_Power, Exponential_Exponential,
+        Exponential_Eyring, Exponential_Power, Exponential_Dual_Exponential,
+        Exponential_Power_Exponential, Exponential_Dual_Power
+
+    Returns
+    -------
+    results : dataframe
+        The dataframe of results. Fitted parameters in this dataframe may be
+        accessed by name. See below example.
+    best_model_name : str
+        The name of the best fitting ALT model. E.g. 'Weibull_Exponential'. See
+        above list for exclude.
+    best_model_at_use_stress : object
+        A distribution object created based on the parameters of the best
+        fitting ALT model at the use stress. This is only provided if the
+        use_level_stress is provided. This is because use_level_stress is
+        required to find the scale parameter.
+    parameters and goodness of fit results : float
+        This is provided for each fitted model. For example, the
+        Weibull_Exponential model values are Weibull_Exponential_a,
+        Weibull_Exponential_b, Weibull_Exponential_beta,
+        Weibull_Exponential_BIC, Weibull_Exponential_AICc,
         Weibull_Exponential_loglik
-    excluded_models - a list of the models which were excluded. This will always include at least half the models since only single stress OR dual stress can be fitted depending on the data.
+    excluded_models : list
+        A list of the models which were excluded. This will always include at
+        least half the models since only single stress OR dual stress can be
+        fitted depending on the data.
 
-    From the results, the models are sorted based on their goodness of fit test results, where the smaller the goodness of fit
-    value, the better the fit of the model to the data.
+    Notes
+    -----
+    From the results, the models are sorted based on their goodness of fit test
+    results, where the smaller the goodness of fit value, the better the fit of
+    the model to the data.
 
     Example Usage:
-    failures = [619, 417, 173, 161, 1016, 512, 999, 1131, 1883, 2413, 3105, 2492]
-    failure_stresses = [500, 500, 500, 500, 400, 400, 400, 400, 350, 350, 350, 350]
-    right_censored = [29, 180, 1341]
-    right_censored_stresses = [500, 400, 350]
-    use_level_stress = 300
-    output = Fit_Everything_ALT(failures=failures,failure_stress_1=failure_stresses,right_censored=right_censored, right_censored_stress_1=right_censored_stresses, use_level_stress=use_level_stress)
 
-    To extract the parameters of the Weibull_Exponential model from the results dataframe, you may access the parameters by name:
-    print('Weibull Exponential beta =',output.Weibull_Exponential_beta)
-    >>> Weibull Exponential beta = 3.0807072337386123
+    .. code:: python
+
+        failures = [619, 417, 173, 161, 1016, 512, 999, 1131, 1883, 2413, 3105, 2492]
+        failure_stresses = [500, 500, 500, 500, 400, 400, 400, 400, 350, 350, 350, 350]
+        right_censored = [29, 180, 1341]
+        right_censored_stresses = [500, 400, 350]
+        use_level_stress = 300
+        output = Fit_Everything_ALT(failures=failures,failure_stress_1=failure_stresses,right_censored=right_censored, right_censored_stress_1=right_censored_stresses, use_level_stress=use_level_stress)
+
+        # To extract the parameters of the Weibull_Exponential model from the results dataframe, you may access the parameters by name:
+        print('Weibull Exponential beta =',output.Weibull_Exponential_beta)
+        >>> Weibull Exponential beta = 3.0807072337386123
     """
 
     def __init__(
@@ -131,6 +170,29 @@ class Fit_Everything_ALT:
         exclude=None,
         sort_by="BIC",
     ):
+
+        inputs = ALT_fitters_input_checking(
+            dist="Everything",
+            life_stress_model="Everything",
+            failures=failures,
+            failure_stress_1=failure_stress_1,
+            failure_stress_2=failure_stress_2,
+            right_censored=right_censored,
+            right_censored_stress_1=right_censored_stress_1,
+            right_censored_stress_2=right_censored_stress_2,
+            CI=CI,
+            use_level_stress=use_level_stress,
+            optimizer=optimizer,
+        )
+        failures = inputs.failures
+        failure_stress_1 = inputs.failure_stress_1
+        failure_stress_2 = inputs.failure_stress_2
+        right_censored = inputs.right_censored
+        right_censored_stress_1 = inputs.right_censored_stress_1
+        right_censored_stress_2 = inputs.right_censored_stress_2
+        CI = inputs.CI
+        optimizer = inputs.optimizer
+        use_level_stress = inputs.use_level_stress
 
         # these are only here for code formatting reasons. They get redefined later
         self._Fit_Everything_ALT__Weibull_Dual_Exponential_params = None
@@ -213,7 +275,7 @@ class Fit_Everything_ALT:
         if exclude is not None:
             for item in exclude:
                 if item.title() in all_ALT_models_list:
-                    excluded_models.append(item.title)
+                    excluded_models.append(item.title())
                 else:
                     unknown_exclusions.append(item)
             if len(unknown_exclusions) > 0:
@@ -228,7 +290,7 @@ class Fit_Everything_ALT:
                 for item in all_ALT_models_list:
                     colorprint(item, text_color="red")
 
-        if failure_stress_2 is not None:
+        if len(failure_stress_2) > 0:
             dual_stress = True
             excluded_models.extend(single_stress_ALT_models_list)
         else:
@@ -251,6 +313,7 @@ class Fit_Everything_ALT:
                     "Log-likelihood",
                     "AICc",
                     "BIC",
+                    "optimizer",
                 ]
             )
         else:  # same df but without column m
@@ -266,6 +329,7 @@ class Fit_Everything_ALT:
                     "Log-likelihood",
                     "AICc",
                     "BIC",
+                    "optimizer",
                 ]
             )
 
@@ -289,6 +353,9 @@ class Fit_Everything_ALT:
             self.Weibull_Exponential_loglik = self.__Weibull_Exponential_params.loglik
             self.Weibull_Exponential_BIC = self.__Weibull_Exponential_params.BIC
             self.Weibull_Exponential_AICc = self.__Weibull_Exponential_params.AICc
+            self.Weibull_Exponential_optimizer = (
+                self.__Weibull_Exponential_params.optimizer
+            )
 
             df = df.append(
                 {
@@ -302,6 +369,7 @@ class Fit_Everything_ALT:
                     "Log-likelihood": self.Weibull_Exponential_loglik,
                     "AICc": self.Weibull_Exponential_AICc,
                     "BIC": self.Weibull_Exponential_BIC,
+                    "optimizer": self.Weibull_Exponential_optimizer,
                 },
                 ignore_index=True,
             )
@@ -325,6 +393,7 @@ class Fit_Everything_ALT:
             self.Weibull_Eyring_loglik = self.__Weibull_Eyring_params.loglik
             self.Weibull_Eyring_BIC = self.__Weibull_Eyring_params.BIC
             self.Weibull_Eyring_AICc = self.__Weibull_Eyring_params.AICc
+            self.Weibull_Eyring_optimizer = self.__Weibull_Eyring_params.optimizer
 
             df = df.append(
                 {
@@ -338,6 +407,7 @@ class Fit_Everything_ALT:
                     "Log-likelihood": self.Weibull_Eyring_loglik,
                     "AICc": self.Weibull_Eyring_AICc,
                     "BIC": self.Weibull_Eyring_BIC,
+                    "optimizer": self.Weibull_Eyring_optimizer,
                 },
                 ignore_index=True,
             )
@@ -361,6 +431,7 @@ class Fit_Everything_ALT:
             self.Weibull_Power_loglik = self.__Weibull_Power_params.loglik
             self.Weibull_Power_BIC = self.__Weibull_Power_params.BIC
             self.Weibull_Power_AICc = self.__Weibull_Power_params.AICc
+            self.Weibull_Power_optimizer = self.__Weibull_Power_params.optimizer
 
             df = df.append(
                 {
@@ -374,6 +445,7 @@ class Fit_Everything_ALT:
                     "Log-likelihood": self.Weibull_Power_loglik,
                     "AICc": self.Weibull_Power_AICc,
                     "BIC": self.Weibull_Power_BIC,
+                    "optimizer": self.Weibull_Power_optimizer,
                 },
                 ignore_index=True,
             )
@@ -399,6 +471,9 @@ class Fit_Everything_ALT:
             )
             self.Lognormal_Exponential_BIC = self.__Lognormal_Exponential_params.BIC
             self.Lognormal_Exponential_AICc = self.__Lognormal_Exponential_params.AICc
+            self.Lognormal_Exponential_optimizer = (
+                self.__Lognormal_Exponential_params.optimizer
+            )
 
             df = df.append(
                 {
@@ -412,6 +487,7 @@ class Fit_Everything_ALT:
                     "Log-likelihood": self.Lognormal_Exponential_loglik,
                     "AICc": self.Lognormal_Exponential_AICc,
                     "BIC": self.Lognormal_Exponential_BIC,
+                    "optimizer": self.Lognormal_Exponential_optimizer,
                 },
                 ignore_index=True,
             )
@@ -435,6 +511,7 @@ class Fit_Everything_ALT:
             self.Lognormal_Eyring_loglik = self.__Lognormal_Eyring_params.loglik
             self.Lognormal_Eyring_BIC = self.__Lognormal_Eyring_params.BIC
             self.Lognormal_Eyring_AICc = self.__Lognormal_Eyring_params.AICc
+            self.Lognormal_Eyring_optimizer = self.__Lognormal_Eyring_params.optimizer
 
             df = df.append(
                 {
@@ -448,6 +525,7 @@ class Fit_Everything_ALT:
                     "Log-likelihood": self.Lognormal_Eyring_loglik,
                     "AICc": self.Lognormal_Eyring_AICc,
                     "BIC": self.Lognormal_Eyring_BIC,
+                    "optimizer": self.Lognormal_Eyring_optimizer,
                 },
                 ignore_index=True,
             )
@@ -471,6 +549,7 @@ class Fit_Everything_ALT:
             self.Lognormal_Power_loglik = self.__Lognormal_Power_params.loglik
             self.Lognormal_Power_BIC = self.__Lognormal_Power_params.BIC
             self.Lognormal_Power_AICc = self.__Lognormal_Power_params.AICc
+            self.Lognormal_Power_optimizer = self.__Lognormal_Power_params.optimizer
 
             df = df.append(
                 {
@@ -484,6 +563,7 @@ class Fit_Everything_ALT:
                     "Log-likelihood": self.Lognormal_Power_loglik,
                     "AICc": self.Lognormal_Power_AICc,
                     "BIC": self.Lognormal_Power_BIC,
+                    "optimizer": self.Lognormal_Power_optimizer,
                 },
                 ignore_index=True,
             )
@@ -507,6 +587,9 @@ class Fit_Everything_ALT:
             self.Normal_Exponential_loglik = self.__Normal_Exponential_params.loglik
             self.Normal_Exponential_BIC = self.__Normal_Exponential_params.BIC
             self.Normal_Exponential_AICc = self.__Normal_Exponential_params.AICc
+            self.Normal_Exponential_optimizer = (
+                self.__Normal_Exponential_params.optimizer
+            )
 
             df = df.append(
                 {
@@ -520,6 +603,7 @@ class Fit_Everything_ALT:
                     "Log-likelihood": self.Normal_Exponential_loglik,
                     "AICc": self.Normal_Exponential_AICc,
                     "BIC": self.Normal_Exponential_BIC,
+                    "optimizer": self.Normal_Exponential_optimizer,
                 },
                 ignore_index=True,
             )
@@ -543,6 +627,7 @@ class Fit_Everything_ALT:
             self.Normal_Eyring_loglik = self.__Normal_Eyring_params.loglik
             self.Normal_Eyring_BIC = self.__Normal_Eyring_params.BIC
             self.Normal_Eyring_AICc = self.__Normal_Eyring_params.AICc
+            self.Normal_Eyring_optimizer = self.__Normal_Eyring_params.optimizer
 
             df = df.append(
                 {
@@ -556,6 +641,7 @@ class Fit_Everything_ALT:
                     "Log-likelihood": self.Normal_Eyring_loglik,
                     "AICc": self.Normal_Eyring_AICc,
                     "BIC": self.Normal_Eyring_BIC,
+                    "optimizer": self.Normal_Eyring_optimizer,
                 },
                 ignore_index=True,
             )
@@ -579,6 +665,7 @@ class Fit_Everything_ALT:
             self.Normal_Power_loglik = self.__Normal_Power_params.loglik
             self.Normal_Power_BIC = self.__Normal_Power_params.BIC
             self.Normal_Power_AICc = self.__Normal_Power_params.AICc
+            self.Normal_Power_optimizer = self.__Normal_Power_params.optimizer
 
             df = df.append(
                 {
@@ -592,6 +679,7 @@ class Fit_Everything_ALT:
                     "Log-likelihood": self.Normal_Power_loglik,
                     "AICc": self.Normal_Power_AICc,
                     "BIC": self.Normal_Power_BIC,
+                    "optimizer": self.Normal_Power_optimizer,
                 },
                 ignore_index=True,
             )
@@ -618,6 +706,9 @@ class Fit_Everything_ALT:
             self.Exponential_Exponential_AICc = (
                 self.__Exponential_Exponential_params.AICc
             )
+            self.Exponential_Exponential_optimizer = (
+                self.__Exponential_Exponential_params.optimizer
+            )
 
             df = df.append(
                 {
@@ -631,6 +722,7 @@ class Fit_Everything_ALT:
                     "Log-likelihood": self.Exponential_Exponential_loglik,
                     "AICc": self.Exponential_Exponential_AICc,
                     "BIC": self.Exponential_Exponential_BIC,
+                    "optimizer": self.Exponential_Exponential_optimizer,
                 },
                 ignore_index=True,
             )
@@ -653,6 +745,9 @@ class Fit_Everything_ALT:
             self.Exponential_Eyring_loglik = self.__Exponential_Eyring_params.loglik
             self.Exponential_Eyring_BIC = self.__Exponential_Eyring_params.BIC
             self.Exponential_Eyring_AICc = self.__Exponential_Eyring_params.AICc
+            self.Exponential_Eyring_optimizer = (
+                self.__Exponential_Eyring_params.optimizer
+            )
 
             df = df.append(
                 {
@@ -666,6 +761,7 @@ class Fit_Everything_ALT:
                     "Log-likelihood": self.Exponential_Eyring_loglik,
                     "AICc": self.Exponential_Eyring_AICc,
                     "BIC": self.Exponential_Eyring_BIC,
+                    "optimizer": self.Exponential_Eyring_optimizer,
                 },
                 ignore_index=True,
             )
@@ -688,6 +784,7 @@ class Fit_Everything_ALT:
             self.Exponential_Power_loglik = self.__Exponential_Power_params.loglik
             self.Exponential_Power_BIC = self.__Exponential_Power_params.BIC
             self.Exponential_Power_AICc = self.__Exponential_Power_params.AICc
+            self.Exponential_Power_optimizer = self.__Exponential_Power_params.optimizer
 
             df = df.append(
                 {
@@ -701,6 +798,7 @@ class Fit_Everything_ALT:
                     "Log-likelihood": self.Exponential_Power_loglik,
                     "AICc": self.Exponential_Power_AICc,
                     "BIC": self.Exponential_Power_BIC,
+                    "optimizer": self.Exponential_Power_optimizer,
                 },
                 ignore_index=True,
             )
@@ -735,6 +833,9 @@ class Fit_Everything_ALT:
             self.Weibull_Dual_Exponential_AICc = (
                 self.__Weibull_Dual_Exponential_params.AICc
             )
+            self.Weibull_Dual_Exponential_optimizer = (
+                self.__Weibull_Dual_Exponential_params.optimizer
+            )
 
             df = df.append(
                 {
@@ -749,6 +850,7 @@ class Fit_Everything_ALT:
                     "Log-likelihood": self.Weibull_Dual_Exponential_loglik,
                     "AICc": self.Weibull_Dual_Exponential_AICc,
                     "BIC": self.Weibull_Dual_Exponential_BIC,
+                    "optimizer": self.Weibull_Dual_Exponential_optimizer,
                 },
                 ignore_index=True,
             )
@@ -783,6 +885,9 @@ class Fit_Everything_ALT:
             self.Weibull_Power_Exponential_AICc = (
                 self.__Weibull_Power_Exponential_params.AICc
             )
+            self.Weibull_Power_Exponential_optimizer = (
+                self.__Weibull_Power_Exponential_params.optimizer
+            )
 
             df = df.append(
                 {
@@ -797,6 +902,7 @@ class Fit_Everything_ALT:
                     "Log-likelihood": self.Weibull_Power_Exponential_loglik,
                     "AICc": self.Weibull_Power_Exponential_AICc,
                     "BIC": self.Weibull_Power_Exponential_BIC,
+                    "optimizer": self.Weibull_Power_Exponential_optimizer,
                 },
                 ignore_index=True,
             )
@@ -823,6 +929,9 @@ class Fit_Everything_ALT:
             self.Weibull_Dual_Power_loglik = self.__Weibull_Dual_Power_params.loglik
             self.Weibull_Dual_Power_BIC = self.__Weibull_Dual_Power_params.BIC
             self.Weibull_Dual_Power_AICc = self.__Weibull_Dual_Power_params.AICc
+            self.Weibull_Dual_Power_optimizer = (
+                self.__Weibull_Dual_Power_params.optimizer
+            )
 
             df = df.append(
                 {
@@ -837,6 +946,7 @@ class Fit_Everything_ALT:
                     "Log-likelihood": self.Weibull_Dual_Power_loglik,
                     "AICc": self.Weibull_Dual_Power_AICc,
                     "BIC": self.Weibull_Dual_Power_BIC,
+                    "optimizer": self.Weibull_Dual_Power_optimizer,
                 },
                 ignore_index=True,
             )
@@ -877,6 +987,9 @@ class Fit_Everything_ALT:
             self.Lognormal_Dual_Exponential_AICc = (
                 self.__Lognormal_Dual_Exponential_params.AICc
             )
+            self.Lognormal_Dual_Exponential_optimizer = (
+                self.__Lognormal_Dual_Exponential_params.optimizer
+            )
 
             df = df.append(
                 {
@@ -891,6 +1004,7 @@ class Fit_Everything_ALT:
                     "Log-likelihood": self.Lognormal_Dual_Exponential_loglik,
                     "AICc": self.Lognormal_Dual_Exponential_AICc,
                     "BIC": self.Lognormal_Dual_Exponential_BIC,
+                    "optimizer": self.Lognormal_Dual_Exponential_optimizer,
                 },
                 ignore_index=True,
             )
@@ -931,6 +1045,9 @@ class Fit_Everything_ALT:
             self.Lognormal_Power_Exponential_AICc = (
                 self.__Lognormal_Power_Exponential_params.AICc
             )
+            self.Lognormal_Power_Exponential_optimizer = (
+                self.__Lognormal_Power_Exponential_params.optimizer
+            )
 
             df = df.append(
                 {
@@ -945,6 +1062,7 @@ class Fit_Everything_ALT:
                     "Log-likelihood": self.Lognormal_Power_Exponential_loglik,
                     "AICc": self.Lognormal_Power_Exponential_AICc,
                     "BIC": self.Lognormal_Power_Exponential_BIC,
+                    "optimizer": self.Lognormal_Power_Exponential_optimizer,
                 },
                 ignore_index=True,
             )
@@ -971,6 +1089,9 @@ class Fit_Everything_ALT:
             self.Lognormal_Dual_Power_loglik = self.__Lognormal_Dual_Power_params.loglik
             self.Lognormal_Dual_Power_BIC = self.__Lognormal_Dual_Power_params.BIC
             self.Lognormal_Dual_Power_AICc = self.__Lognormal_Dual_Power_params.AICc
+            self.Lognormal_Dual_Power_optimizer = (
+                self.__Lognormal_Dual_Power_params.optimizer
+            )
 
             df = df.append(
                 {
@@ -985,6 +1106,7 @@ class Fit_Everything_ALT:
                     "Log-likelihood": self.Lognormal_Dual_Power_loglik,
                     "AICc": self.Lognormal_Dual_Power_AICc,
                     "BIC": self.Lognormal_Dual_Power_BIC,
+                    "optimizer": self.Lognormal_Dual_Power_optimizer,
                 },
                 ignore_index=True,
             )
@@ -1017,6 +1139,9 @@ class Fit_Everything_ALT:
             self.Normal_Dual_Exponential_AICc = (
                 self.__Normal_Dual_Exponential_params.AICc
             )
+            self.Normal_Dual_Exponential_optimizer = (
+                self.__Normal_Dual_Exponential_params.optimizer
+            )
 
             df = df.append(
                 {
@@ -1031,6 +1156,7 @@ class Fit_Everything_ALT:
                     "Log-likelihood": self.Normal_Dual_Exponential_loglik,
                     "AICc": self.Normal_Dual_Exponential_AICc,
                     "BIC": self.Normal_Dual_Exponential_BIC,
+                    "optimizer": self.Normal_Dual_Exponential_optimizer,
                 },
                 ignore_index=True,
             )
@@ -1065,6 +1191,9 @@ class Fit_Everything_ALT:
             self.Normal_Power_Exponential_AICc = (
                 self.__Normal_Power_Exponential_params.AICc
             )
+            self.Normal_Power_Exponential_optimizer = (
+                self.__Normal_Power_Exponential_params.optimizer
+            )
 
             df = df.append(
                 {
@@ -1079,6 +1208,7 @@ class Fit_Everything_ALT:
                     "Log-likelihood": self.Normal_Power_Exponential_loglik,
                     "AICc": self.Normal_Power_Exponential_AICc,
                     "BIC": self.Normal_Power_Exponential_BIC,
+                    "optimizer": self.Normal_Power_Exponential_optimizer,
                 },
                 ignore_index=True,
             )
@@ -1105,6 +1235,7 @@ class Fit_Everything_ALT:
             self.Normal_Dual_Power_loglik = self.__Normal_Dual_Power_params.loglik
             self.Normal_Dual_Power_BIC = self.__Normal_Dual_Power_params.BIC
             self.Normal_Dual_Power_AICc = self.__Normal_Dual_Power_params.AICc
+            self.Normal_Dual_Power_optimizer = self.__Normal_Dual_Power_params.optimizer
 
             df = df.append(
                 {
@@ -1119,6 +1250,7 @@ class Fit_Everything_ALT:
                     "Log-likelihood": self.Normal_Dual_Power_loglik,
                     "AICc": self.Normal_Dual_Power_AICc,
                     "BIC": self.Normal_Dual_Power_BIC,
+                    "optimizer": self.Normal_Dual_Power_optimizer,
                 },
                 ignore_index=True,
             )
@@ -1158,6 +1290,9 @@ class Fit_Everything_ALT:
             self.Exponential_Dual_Exponential_AICc = (
                 self.__Exponential_Dual_Exponential_params.AICc
             )
+            self.Exponential_Dual_Exponential_optimizer = (
+                self.__Exponential_Dual_Exponential_params.optimizer
+            )
 
             df = df.append(
                 {
@@ -1172,6 +1307,7 @@ class Fit_Everything_ALT:
                     "Log-likelihood": self.Exponential_Dual_Exponential_loglik,
                     "AICc": self.Exponential_Dual_Exponential_AICc,
                     "BIC": self.Exponential_Dual_Exponential_BIC,
+                    "optimizer": self.Exponential_Dual_Exponential_optimizer,
                 },
                 ignore_index=True,
             )
@@ -1211,6 +1347,9 @@ class Fit_Everything_ALT:
             self.Exponential_Power_Exponential_AICc = (
                 self.__Exponential_Power_Exponential_params.AICc
             )
+            self.Exponential_Power_Exponential_optimizer = (
+                self.__Exponential_Power_Exponential_params.optimizer
+            )
 
             df = df.append(
                 {
@@ -1225,6 +1364,7 @@ class Fit_Everything_ALT:
                     "Log-likelihood": self.Exponential_Power_Exponential_loglik,
                     "AICc": self.Exponential_Power_Exponential_AICc,
                     "BIC": self.Exponential_Power_Exponential_BIC,
+                    "optimizer": self.Exponential_Power_Exponential_optimizer,
                 },
                 ignore_index=True,
             )
@@ -1252,6 +1392,9 @@ class Fit_Everything_ALT:
             )
             self.Exponential_Dual_Power_BIC = self.__Exponential_Dual_Power_params.BIC
             self.Exponential_Dual_Power_AICc = self.__Exponential_Dual_Power_params.AICc
+            self.Exponential_Dual_Power_optimizer = (
+                self.__Exponential_Dual_Power_params.optimizer
+            )
 
             df = df.append(
                 {
@@ -1266,6 +1409,7 @@ class Fit_Everything_ALT:
                     "Log-likelihood": self.Exponential_Dual_Power_loglik,
                     "AICc": self.Exponential_Dual_Power_AICc,
                     "BIC": self.Exponential_Dual_Power_BIC,
+                    "optimizer": self.Exponential_Dual_Power_optimizer,
                 },
                 ignore_index=True,
             )
@@ -1512,13 +1656,12 @@ class Fit_Everything_ALT:
 
         # print the results
         if print_results is True:  # printing occurs by default
-            if right_censored is not None:
+            if len(right_censored) > 0:
                 frac_cens = (
                     len(right_censored) / (len(failures) + len(right_censored))
                 ) * 100
             else:
                 frac_cens = 0
-                right_censored = []
             if frac_cens % 1 < 1e-10:
                 frac_cens = int(frac_cens)
             colorprint("Results from Fit_Everything_ALT:", bold=True, underline=True)
@@ -2503,49 +2646,115 @@ class Fit_Everything_ALT:
 
 class Fit_Weibull_Exponential:
     """
-    Fit_Weibull_Exponential
+    This function will fit the Weibull-Exponential life-stress model to the data
+    provided. Please see the online documentation for the equations of this
+    model.
 
-    This function will Fit the Weibull-Exponential life-stress model to the data provided. Please see the online documentation for the equations of this model.
-    This model is most appropriate to model a life-stress relationship with temperature. It is recommended that you ensure your temperature data are in Kelvin.
-    If you are using this model for the Arrhenius equation, a = Ea/K_B. When results are printed Ea will be provided in eV.
+    This model is most appropriate to model a life-stress relationship with
+    temperature. It is recommended that you ensure your temperature data are in
+    Kelvin.
 
-    Inputs:
-    failures - an array or list of the failure times.
-    failure_stress - an array or list of the corresponding stresses (such as temperature) at which each failure occurred. This must match the length of failures as each failure is tied to a failure stress.
-    right_censored - an array or list of all the right censored failure times.
-    right_censored_stress - an array or list of the corresponding stresses (such as temperature) at which each right_censored data point was obtained. This must match the length of right_censored as each right_censored value is tied to a right_censored stress.
-    use_level_stress - The use level stress at which you want to know the mean life. Optional input.
-    print_results - True/False. Default is True
-    show_probability_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
-    show_life_stress_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
-    CI - confidence interval for estimating confidence limits on parameters. Must be between 0 and 1. Default is 0.95 for 95% CI.
-    optimizer - 'TNC', 'L-BFGS-B', 'powell'. Default is 'TNC'. These are all bound constrained methods. If the bound constrained method fails, nelder-mead will be used. If nelder-mead fails the initial guess (using least squares) will be returned with a warning.
+    If you are using this model for the Arrhenius equation, a = Ea/K_B. When
+    results are printed Ea will be provided in eV.
 
-    Outputs:
-    a - fitted parameter from the Exponential model
-    b - fitted parameter from the Exponential model
-    beta - the fitted Weibull_2P beta
-    loglik2 - Log Likelihood*-2 (as used in JMP Pro)
-    loglik - Log Likelihood (as used in Minitab and Reliasoft)
-    AICc - Akaike Information Criterion
-    BIC - Bayesian Information Criterion
-    a_SE - the standard error (sqrt(variance)) of the parameter
-    b_SE - the standard error (sqrt(variance)) of the parameter
-    beta_SE - the standard error (sqrt(variance)) of the parameter
-    a_upper - the upper CI estimate of the parameter
-    a_lower - the lower CI estimate of the parameter
-    b_upper - the upper CI estimate of the parameter
-    b_lower - the lower CI estimate of the parameter
-    beta_upper - the upper CI estimate of the parameter
-    beta_lower - the lower CI estimate of the parameter
-    results - a dataframe of the results (point estimate, standard error, Lower CI and Upper CI for each parameter)
-    goodness_of_fit - a dataframe of the goodness of fit criterion (Log-likelihood, AICc, BIC)
-    change_of_parameters - a dataframe showing the change of the parameters (alpha and beta) at each stress level
-    mean_life - the mean life at the use_level_stress (only provided if use_level_stress is provided)
-    alpha_at_use_stress - the equivalent Weibull alpha parameter at the use level stress (only provided if use_level_stress is provided)
-    distribution_at_use_stress - the Weibull distribution at the use level stress (only provided if use_level_stress is provided)
-    probability_plot - the figure object from the probability plot (only provided if show_probability_plot is True)
-    life_stress_plot - the figure object from the life-stress plot (only provided if show_life_stress_plot is True)
+    Parameters
+    ----------
+    failures : array, list
+        The failure data.
+    failure_stress : array, list
+        The corresponding stresses (such as temperature) at which each failure
+        occurred. This must match the length of failures as each failure is
+        tied to a failure stress.
+    right_censored : array, list, optional
+        The right censored failure times. Optional input.
+    right_censored_stress : array, list, optional
+        The corresponding stresses (such as temperature) at which each
+        right_censored data point was obtained. This must match the length of
+        right_censored as each right_censored value is tied to a
+        right_censored stress. Conditionally optional input. This must be
+        provided if right_censored is provided.
+    use_level_stress : int, float, optional
+        The use level stress at which you want to know the mean life. Optional
+        input.
+    print_results : bool, optional
+        True/False. Default is True. Prints the results to the console.
+    show_probability_plot : bool, object, optional
+        True/False. Default is True. Provides a probability plot of the fitted
+        ALT model. If an axes object is passed it will be used.
+    show_life_stress_plot : bool, object, optional
+        True/False. Default is True. Provides a life stress plot of the fitted
+        ALT model. If an axes object is passed it will be used.
+    CI : float, optional
+        Confidence interval for estimating confidence limits on parameters. Must
+        be between 0 and 1. Default is 0.95 for 95% CI.
+    optimizer : str, optional
+        The optimization algorithm used to find the solution. Must be either
+        'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'. Specifying the optimizer
+        will result in that optimizer being used. To use all of these specify
+        'best' and the best result will be returned. The default behaviour is to
+        try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and
+        'powell') and stop once one of the optimizers finds a solution. If the
+        optimizer fails, the initial guess will be returned.
+        For more detail see the
+        `documentation <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
+
+    Returns
+    -------
+    a : float
+        The fitted parameter from the Exponential model
+    b : float
+        The fitted parameter from the Exponential model
+    beta : float
+        The fitted Weibull_2P beta parameter
+    loglik2 : float
+        Log Likelihood*-2 (as used in JMP Pro)
+    loglik : float
+        Log Likelihood (as used in Minitab and Reliasoft)
+    AICc : float
+        Akaike Information Criterion
+    BIC : float
+        Bayesian Information Criterion
+    a_SE : float
+        The standard error (sqrt(variance)) of the parameter
+    b_SE : float
+        The standard error (sqrt(variance)) of the parameter
+    beta_SE : float
+        The standard error (sqrt(variance)) of the parameter
+    a_upper : float
+        The upper CI estimate of the parameter
+    a_lower : float
+        The lower CI estimate of the parameter
+    b_upper : float
+        The upper CI estimate of the parameter
+    b_lower : float
+        The lower CI estimate of the parameter
+    beta_upper : float
+        The upper CI estimate of the parameter
+    beta_lower : float
+        The lower CI estimate of the parameter
+    results : dataframe
+        A dataframe of the results (point estimate, standard error, Lower CI and
+        Upper CI for each parameter)
+    goodness_of_fit : dataframe
+        A dataframe of the goodness of fit criterion (Log-likelihood, AICc, BIC)
+    change_of_parameters : dataframe
+        A dataframe showing the change of the parameters (alpha and beta) at
+        each stress level.
+    mean_life : float
+        The mean life at the use_level_stress (only provided if use_level_stress
+        is provided).
+    alpha_at_use_stress : float
+        The equivalent Weibull alpha parameter at the use level stress (only
+        provided if use_level_stress is provided).
+    distribution_at_use_stress : object
+        The Weibull distribution at the use level stress (only provided if
+        use_level_stress is provided).
+    probability_plot : object
+        The figure object from the probability plot (only provided if
+        show_probability_plot is True).
+    life_stress_plot : object
+        The figure object from the life-stress plot (only provided if
+        show_life_stress_plot is True).
     """
 
     def __init__(
@@ -2626,7 +2835,7 @@ class Fit_Weibull_Exponential:
         guess = [life_stress_guess[0], life_stress_guess[1], common_beta]  # a, b, beta
 
         # fit the model using the MLE method
-        MLE_results = ALT_MLE_optimisation(
+        MLE_results = ALT_MLE_optimization(
             model="Exponential",
             dist="Weibull",
             LL_func=LL_func,
@@ -2641,6 +2850,7 @@ class Fit_Weibull_Exponential:
         self.b = MLE_results.b
         self.beta = MLE_results.beta
         self.success = MLE_results.success
+        self.optimizer = MLE_results.optimizer
 
         # confidence interval estimates of parameters
         Z = -ss.norm.ppf((1 - CI) / 2)
@@ -2652,19 +2862,41 @@ class Fit_Weibull_Exponential:
             np.array(tuple(failure_stress)),
             np.array(tuple(right_censored_stress)),
         )
-        covariance_matrix = np.linalg.inv(hessian_matrix)
-        self.a_SE = abs(covariance_matrix[0][0]) ** 0.5
-        self.b_SE = abs(covariance_matrix[1][1]) ** 0.5
-        self.beta_SE = abs(covariance_matrix[2][2]) ** 0.5
-        # a can be positive or negative
-        self.a_upper = self.a + (Z * self.a_SE)
-        self.a_lower = self.a + (-Z * self.a_SE)
-        # b is strictly positive
-        self.b_upper = self.b * (np.exp(Z * (self.b_SE / self.b)))
-        self.b_lower = self.b * (np.exp(-Z * (self.b_SE / self.b)))
-        # beta is strictly positive
-        self.beta_upper = self.beta * (np.exp(Z * (self.beta_SE / self.beta)))
-        self.beta_lower = self.beta * (np.exp(-Z * (self.beta_SE / self.beta)))
+        try:
+            covariance_matrix = np.linalg.inv(hessian_matrix)
+            self.a_SE = abs(covariance_matrix[0][0]) ** 0.5
+            self.b_SE = abs(covariance_matrix[1][1]) ** 0.5
+            self.beta_SE = abs(covariance_matrix[2][2]) ** 0.5
+            # a can be positive or negative
+            self.a_upper = self.a + (Z * self.a_SE)
+            self.a_lower = self.a + (-Z * self.a_SE)
+            # b is strictly positive
+            self.b_upper = self.b * (np.exp(Z * (self.b_SE / self.b)))
+            self.b_lower = self.b * (np.exp(-Z * (self.b_SE / self.b)))
+            # beta is strictly positive
+            self.beta_upper = self.beta * (np.exp(Z * (self.beta_SE / self.beta)))
+            self.beta_lower = self.beta * (np.exp(-Z * (self.beta_SE / self.beta)))
+        except LinAlgError:
+            # this exception is rare but can occur with some optimizers and small data sets
+            colorprint(
+                str(
+                    "WARNING: The hessian matrix obtained using the "
+                    + self.optimizer
+                    + " optimizer is non-invertable for the Weibull_Exponential model.\n"
+                    "Confidence interval estimates of the parameters could not be obtained.\n"
+                    "You may want to try fitting the model using a different optimizer."
+                ),
+                text_color="red",
+            )
+            self.a_SE = 0
+            self.b_SE = 0
+            self.beta_SE = 0
+            self.a_upper = self.a
+            self.a_lower = self.a
+            self.b_upper = self.b
+            self.b_lower = self.b
+            self.beta_upper = self.beta
+            self.beta_lower = self.beta
 
         # results dataframe
         results_data = {
@@ -2788,6 +3020,8 @@ class Fit_Weibull_Exponential:
                 underline=True,
             )
             print("Analysis method: Maximum Likelihood Estimation (MLE)")
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
             print(
                 "Failures / Right censored:",
                 str(str(len(failures)) + "/" + str(len(right_censored))),
@@ -2888,7 +3122,12 @@ class Fit_Weibull_Eyring:
     show_probability_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     show_life_stress_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     CI - confidence interval for estimating confidence limits on parameters. Must be between 0 and 1. Default is 0.95 for 95% CI.
-    optimizer - 'TNC', 'L-BFGS-B', 'powell'. Default is 'TNC'. These are all bound constrained methods. If the bound constrained method fails, nelder-mead will be used. If nelder-mead fails the initial guess (using least squares) will be returned with a warning.
+    optimizer - The optimization algorithm used to find the solution. Must be either 'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'.
+        Specifying the optimizer will result in that optimizer being used.
+        To use all of these specify 'best' and the best result will be returned.
+        The default behaviour is to try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and 'powell') and stop once one of the optimizers finds a solution.
+        If the optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
 
     Outputs:
     a - fitted parameter from the Eyring model
@@ -2995,7 +3234,7 @@ class Fit_Weibull_Eyring:
         guess = [life_stress_guess[0], life_stress_guess[1], common_beta]  # a, c, beta
 
         # fit the model using the MLE method
-        MLE_results = ALT_MLE_optimisation(
+        MLE_results = ALT_MLE_optimization(
             model="Eyring",
             dist="Weibull",
             LL_func=LL_func,
@@ -3010,6 +3249,7 @@ class Fit_Weibull_Eyring:
         self.c = MLE_results.c
         self.beta = MLE_results.beta
         self.success = MLE_results.success
+        self.optimizer = MLE_results.optimizer
 
         # confidence interval estimates of parameters
         Z = -ss.norm.ppf((1 - CI) / 2)
@@ -3021,19 +3261,41 @@ class Fit_Weibull_Eyring:
             np.array(tuple(failure_stress)),
             np.array(tuple(right_censored_stress)),
         )
-        covariance_matrix = np.linalg.inv(hessian_matrix)
-        self.a_SE = abs(covariance_matrix[0][0]) ** 0.5
-        self.c_SE = abs(covariance_matrix[1][1]) ** 0.5
-        self.beta_SE = abs(covariance_matrix[2][2]) ** 0.5
-        # a can be positive or negative
-        self.a_upper = self.a + (Z * self.a_SE)
-        self.a_lower = self.a + (-Z * self.a_SE)
-        # c can be positive or negative
-        self.c_upper = self.c + (Z * self.c_SE)
-        self.c_lower = self.c + (-Z * self.c_SE)
-        # beta is strictly positive
-        self.beta_upper = self.beta * (np.exp(Z * (self.beta_SE / self.beta)))
-        self.beta_lower = self.beta * (np.exp(-Z * (self.beta_SE / self.beta)))
+        try:
+            covariance_matrix = np.linalg.inv(hessian_matrix)
+            self.a_SE = abs(covariance_matrix[0][0]) ** 0.5
+            self.c_SE = abs(covariance_matrix[1][1]) ** 0.5
+            self.beta_SE = abs(covariance_matrix[2][2]) ** 0.5
+            # a can be positive or negative
+            self.a_upper = self.a + (Z * self.a_SE)
+            self.a_lower = self.a + (-Z * self.a_SE)
+            # c can be positive or negative
+            self.c_upper = self.c + (Z * self.c_SE)
+            self.c_lower = self.c + (-Z * self.c_SE)
+            # beta is strictly positive
+            self.beta_upper = self.beta * (np.exp(Z * (self.beta_SE / self.beta)))
+            self.beta_lower = self.beta * (np.exp(-Z * (self.beta_SE / self.beta)))
+        except LinAlgError:
+            # this exception is rare but can occur with some optimizers and small data sets
+            colorprint(
+                str(
+                    "WARNING: The hessian matrix obtained using the "
+                    + self.optimizer
+                    + " optimizer is non-invertable for the Weibull_Eyring model.\n"
+                    "Confidence interval estimates of the parameters could not be obtained.\n"
+                    "You may want to try fitting the model using a different optimizer."
+                ),
+                text_color="red",
+            )
+            self.a_SE = 0
+            self.c_SE = 0
+            self.beta_SE = 0
+            self.a_upper = self.a
+            self.a_lower = self.a
+            self.c_upper = self.c
+            self.c_lower = self.c
+            self.beta_upper = self.beta
+            self.beta_lower = self.beta
 
         # results dataframe
         results_data = {
@@ -3153,6 +3415,8 @@ class Fit_Weibull_Eyring:
                 underline=True,
             )
             print("Analysis method: Maximum Likelihood Estimation (MLE)")
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
             print(
                 "Failures / Right censored:",
                 str(str(len(failures)) + "/" + str(len(right_censored))),
@@ -3246,7 +3510,12 @@ class Fit_Weibull_Power:
     show_probability_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     show_life_stress_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     CI - confidence interval for estimating confidence limits on parameters. Must be between 0 and 1. Default is 0.95 for 95% CI.
-    optimizer - 'TNC', 'L-BFGS-B', 'powell'. Default is 'TNC'. These are all bound constrained methods. If the bound constrained method fails, nelder-mead will be used. If nelder-mead fails the initial guess (using least squares) will be returned with a warning.
+    optimizer - The optimization algorithm used to find the solution. Must be either 'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'.
+        Specifying the optimizer will result in that optimizer being used.
+        To use all of these specify 'best' and the best result will be returned.
+        The default behaviour is to try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and 'powell') and stop once one of the optimizers finds a solution.
+        If the optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
 
     Outputs:
     a - fitted parameter from the Power model
@@ -3353,7 +3622,7 @@ class Fit_Weibull_Power:
         guess = [life_stress_guess[0], life_stress_guess[1], common_beta]  # a, n, beta
 
         # fit the model using the MLE method
-        MLE_results = ALT_MLE_optimisation(
+        MLE_results = ALT_MLE_optimization(
             model="Power",
             dist="Weibull",
             LL_func=LL_func,
@@ -3368,6 +3637,7 @@ class Fit_Weibull_Power:
         self.n = MLE_results.n
         self.beta = MLE_results.beta
         self.success = MLE_results.success
+        self.optimizer = MLE_results.optimizer
 
         # confidence interval estimates of parameters
         Z = -ss.norm.ppf((1 - CI) / 2)
@@ -3379,19 +3649,41 @@ class Fit_Weibull_Power:
             np.array(tuple(failure_stress)),
             np.array(tuple(right_censored_stress)),
         )
-        covariance_matrix = np.linalg.inv(hessian_matrix)
-        self.a_SE = abs(covariance_matrix[0][0]) ** 0.5
-        self.n_SE = abs(covariance_matrix[1][1]) ** 0.5
-        self.beta_SE = abs(covariance_matrix[2][2]) ** 0.5
-        # a is strictly positive
-        self.a_upper = self.a * (np.exp(Z * (self.a_SE / self.a)))
-        self.a_lower = self.a * (np.exp(-Z * (self.a_SE / self.a)))
-        # n can be positive or negative
-        self.n_upper = self.n + (Z * self.n_SE)
-        self.n_lower = self.n + (-Z * self.n_SE)
-        # beta is strictly positive
-        self.beta_upper = self.beta * (np.exp(Z * (self.beta_SE / self.beta)))
-        self.beta_lower = self.beta * (np.exp(-Z * (self.beta_SE / self.beta)))
+        try:
+            covariance_matrix = np.linalg.inv(hessian_matrix)
+            self.a_SE = abs(covariance_matrix[0][0]) ** 0.5
+            self.n_SE = abs(covariance_matrix[1][1]) ** 0.5
+            self.beta_SE = abs(covariance_matrix[2][2]) ** 0.5
+            # a is strictly positive
+            self.a_upper = self.a * (np.exp(Z * (self.a_SE / self.a)))
+            self.a_lower = self.a * (np.exp(-Z * (self.a_SE / self.a)))
+            # n can be positive or negative
+            self.n_upper = self.n + (Z * self.n_SE)
+            self.n_lower = self.n + (-Z * self.n_SE)
+            # beta is strictly positive
+            self.beta_upper = self.beta * (np.exp(Z * (self.beta_SE / self.beta)))
+            self.beta_lower = self.beta * (np.exp(-Z * (self.beta_SE / self.beta)))
+        except LinAlgError:
+            # this exception is rare but can occur with some optimizers and small data sets
+            colorprint(
+                str(
+                    "WARNING: The hessian matrix obtained using the "
+                    + self.optimizer
+                    + " optimizer is non-invertable for the Weibull_Power model.\n"
+                    "Confidence interval estimates of the parameters could not be obtained.\n"
+                    "You may want to try fitting the model using a different optimizer."
+                ),
+                text_color="red",
+            )
+            self.a_SE = 0
+            self.n_SE = 0
+            self.beta_SE = 0
+            self.a_upper = self.a
+            self.a_lower = self.a
+            self.n_upper = self.n
+            self.n_lower = self.n
+            self.beta_upper = self.beta
+            self.beta_lower = self.beta
 
         # results dataframe
         results_data = {
@@ -3511,6 +3803,8 @@ class Fit_Weibull_Power:
                 underline=True,
             )
             print("Analysis method: Maximum Likelihood Estimation (MLE)")
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
             print(
                 "Failures / Right censored:",
                 str(str(len(failures)) + "/" + str(len(right_censored))),
@@ -3606,7 +3900,12 @@ class Fit_Weibull_Dual_Exponential:
     show_probability_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     show_life_stress_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     CI - confidence interval for estimating confidence limits on parameters. Must be between 0 and 1. Default is 0.95 for 95% CI.
-    optimizer - 'TNC', 'L-BFGS-B', 'powell'. Default is 'TNC'. These are all bound constrained methods. If the bound constrained method fails, nelder-mead will be used. If nelder-mead fails the initial guess (using least squares) will be returned with a warning.
+    optimizer - The optimization algorithm used to find the solution. Must be either 'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'.
+        Specifying the optimizer will result in that optimizer being used.
+        To use all of these specify 'best' and the best result will be returned.
+        The default behaviour is to try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and 'powell') and stop once one of the optimizers finds a solution.
+        If the optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
 
     Outputs:
     a - fitted parameter from the Dual_Exponential model
@@ -3731,7 +4030,7 @@ class Fit_Weibull_Dual_Exponential:
         ]  # a, b, c, beta
 
         # fit the model using the MLE method
-        MLE_results = ALT_MLE_optimisation(
+        MLE_results = ALT_MLE_optimization(
             model="Dual_Exponential",
             dist="Weibull",
             LL_func=LL_func,
@@ -3749,6 +4048,7 @@ class Fit_Weibull_Dual_Exponential:
         self.c = MLE_results.c
         self.beta = MLE_results.beta
         self.success = MLE_results.success
+        self.optimizer = MLE_results.optimizer
 
         # confidence interval estimates of parameters
         Z = -ss.norm.ppf((1 - CI) / 2)
@@ -3762,23 +4062,48 @@ class Fit_Weibull_Dual_Exponential:
             np.array(tuple(right_censored_stress_1)),
             np.array(tuple(right_censored_stress_2)),
         )
-        covariance_matrix = np.linalg.inv(hessian_matrix)
-        self.a_SE = abs(covariance_matrix[0][0]) ** 0.5
-        self.b_SE = abs(covariance_matrix[1][1]) ** 0.5
-        self.c_SE = abs(covariance_matrix[2][2]) ** 0.5
-        self.beta_SE = abs(covariance_matrix[3][3]) ** 0.5
-        # a can be positive or negative
-        self.a_upper = self.a + (Z * self.a_SE)
-        self.a_lower = self.a + (-Z * self.a_SE)
-        # b can be positive or negative
-        self.b_upper = self.b + (Z * self.b_SE)
-        self.b_lower = self.b + (-Z * self.b_SE)
-        # c is strictly positive
-        self.c_upper = self.c * (np.exp(Z * (self.c_SE / self.c)))
-        self.c_lower = self.c * (np.exp(-Z * (self.c_SE / self.c)))
-        # beta is strictly positive
-        self.beta_upper = self.beta * (np.exp(Z * (self.beta_SE / self.beta)))
-        self.beta_lower = self.beta * (np.exp(-Z * (self.beta_SE / self.beta)))
+        try:
+            covariance_matrix = np.linalg.inv(hessian_matrix)
+            self.a_SE = abs(covariance_matrix[0][0]) ** 0.5
+            self.b_SE = abs(covariance_matrix[1][1]) ** 0.5
+            self.c_SE = abs(covariance_matrix[2][2]) ** 0.5
+            self.beta_SE = abs(covariance_matrix[3][3]) ** 0.5
+            # a can be positive or negative
+            self.a_upper = self.a + (Z * self.a_SE)
+            self.a_lower = self.a + (-Z * self.a_SE)
+            # b can be positive or negative
+            self.b_upper = self.b + (Z * self.b_SE)
+            self.b_lower = self.b + (-Z * self.b_SE)
+            # c is strictly positive
+            self.c_upper = self.c * (np.exp(Z * (self.c_SE / self.c)))
+            self.c_lower = self.c * (np.exp(-Z * (self.c_SE / self.c)))
+            # beta is strictly positive
+            self.beta_upper = self.beta * (np.exp(Z * (self.beta_SE / self.beta)))
+            self.beta_lower = self.beta * (np.exp(-Z * (self.beta_SE / self.beta)))
+        except LinAlgError:
+            # this exception is rare but can occur with some optimizers and small data sets
+            colorprint(
+                str(
+                    "WARNING: The hessian matrix obtained using the "
+                    + self.optimizer
+                    + " optimizer is non-invertable for the Weibull_Dual_Exponential model.\n"
+                    "Confidence interval estimates of the parameters could not be obtained.\n"
+                    "You may want to try fitting the model using a different optimizer."
+                ),
+                text_color="red",
+            )
+            self.a_SE = 0
+            self.b_SE = 0
+            self.c_SE = 0
+            self.beta_SE = 0
+            self.a_upper = self.a
+            self.a_lower = self.a
+            self.b_upper = self.b
+            self.b_lower = self.b
+            self.c_upper = self.c
+            self.c_lower = self.c
+            self.beta_upper = self.beta
+            self.beta_lower = self.beta
 
         # results dataframe
         results_data = {
@@ -3921,6 +4246,8 @@ class Fit_Weibull_Dual_Exponential:
                 underline=True,
             )
             print("Analysis method: Maximum Likelihood Estimation (MLE)")
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
             print(
                 "Failures / Right censored:",
                 str(str(len(failures)) + "/" + str(len(right_censored))),
@@ -4021,7 +4348,12 @@ class Fit_Weibull_Power_Exponential:
     show_probability_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     show_life_stress_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     CI - confidence interval for estimating confidence limits on parameters. Must be between 0 and 1. Default is 0.95 for 95% CI.
-    optimizer - 'TNC', 'L-BFGS-B', 'powell'. Default is 'TNC'. These are all bound constrained methods. If the bound constrained method fails, nelder-mead will be used. If nelder-mead fails the initial guess (using least squares) will be returned with a warning.
+    optimizer - The optimization algorithm used to find the solution. Must be either 'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'.
+        Specifying the optimizer will result in that optimizer being used.
+        To use all of these specify 'best' and the best result will be returned.
+        The default behaviour is to try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and 'powell') and stop once one of the optimizers finds a solution.
+        If the optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
 
     Outputs:
     a - fitted parameter from the Power_Exponential model
@@ -4146,7 +4478,7 @@ class Fit_Weibull_Power_Exponential:
         ]  # a, c, n, beta
 
         # fit the model using the MLE method
-        MLE_results = ALT_MLE_optimisation(
+        MLE_results = ALT_MLE_optimization(
             model="Power_Exponential",
             dist="Weibull",
             LL_func=LL_func,
@@ -4164,6 +4496,7 @@ class Fit_Weibull_Power_Exponential:
         self.n = MLE_results.n
         self.beta = MLE_results.beta
         self.success = MLE_results.success
+        self.optimizer = MLE_results.optimizer
 
         # confidence interval estimates of parameters
         Z = -ss.norm.ppf((1 - CI) / 2)
@@ -4177,23 +4510,48 @@ class Fit_Weibull_Power_Exponential:
             np.array(tuple(right_censored_stress_1)),
             np.array(tuple(right_censored_stress_2)),
         )
-        covariance_matrix = np.linalg.inv(hessian_matrix)
-        self.a_SE = abs(covariance_matrix[0][0]) ** 0.5
-        self.c_SE = abs(covariance_matrix[1][1]) ** 0.5
-        self.n_SE = abs(covariance_matrix[2][2]) ** 0.5
-        self.beta_SE = abs(covariance_matrix[3][3]) ** 0.5
-        # a can be positive or negative
-        self.a_upper = self.a + (Z * self.a_SE)
-        self.a_lower = self.a + (-Z * self.a_SE)
-        # c is strictly positive
-        self.c_upper = self.c * (np.exp(Z * (self.c_SE / self.c)))
-        self.c_lower = self.c * (np.exp(-Z * (self.c_SE / self.c)))
-        # n can be positive or negative
-        self.n_upper = self.n + (Z * self.n_SE)
-        self.n_lower = self.n + (-Z * self.n_SE)
-        # beta is strictly positive
-        self.beta_upper = self.beta * (np.exp(Z * (self.beta_SE / self.beta)))
-        self.beta_lower = self.beta * (np.exp(-Z * (self.beta_SE / self.beta)))
+        try:
+            covariance_matrix = np.linalg.inv(hessian_matrix)
+            self.a_SE = abs(covariance_matrix[0][0]) ** 0.5
+            self.c_SE = abs(covariance_matrix[1][1]) ** 0.5
+            self.n_SE = abs(covariance_matrix[2][2]) ** 0.5
+            self.beta_SE = abs(covariance_matrix[3][3]) ** 0.5
+            # a can be positive or negative
+            self.a_upper = self.a + (Z * self.a_SE)
+            self.a_lower = self.a + (-Z * self.a_SE)
+            # c is strictly positive
+            self.c_upper = self.c * (np.exp(Z * (self.c_SE / self.c)))
+            self.c_lower = self.c * (np.exp(-Z * (self.c_SE / self.c)))
+            # n can be positive or negative
+            self.n_upper = self.n + (Z * self.n_SE)
+            self.n_lower = self.n + (-Z * self.n_SE)
+            # beta is strictly positive
+            self.beta_upper = self.beta * (np.exp(Z * (self.beta_SE / self.beta)))
+            self.beta_lower = self.beta * (np.exp(-Z * (self.beta_SE / self.beta)))
+        except LinAlgError:
+            # this exception is rare but can occur with some optimizers and small data sets
+            colorprint(
+                str(
+                    "WARNING: The hessian matrix obtained using the "
+                    + self.optimizer
+                    + " optimizer is non-invertable for the Weibull_Power_Exponential model.\n"
+                    "Confidence interval estimates of the parameters could not be obtained.\n"
+                    "You may want to try fitting the model using a different optimizer."
+                ),
+                text_color="red",
+            )
+            self.a_SE = 0
+            self.c_SE = 0
+            self.n_SE = 0
+            self.beta_SE = 0
+            self.a_upper = self.a
+            self.a_lower = self.a
+            self.c_upper = self.c
+            self.c_lower = self.c
+            self.n_upper = self.n
+            self.n_lower = self.n
+            self.beta_upper = self.beta
+            self.beta_lower = self.beta
 
         # results dataframe
         results_data = {
@@ -4336,6 +4694,8 @@ class Fit_Weibull_Power_Exponential:
                 underline=True,
             )
             print("Analysis method: Maximum Likelihood Estimation (MLE)")
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
             print(
                 "Failures / Right censored:",
                 str(str(len(failures)) + "/" + str(len(right_censored))),
@@ -4433,7 +4793,12 @@ class Fit_Weibull_Dual_Power:
     show_probability_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     show_life_stress_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     CI - confidence interval for estimating confidence limits on parameters. Must be between 0 and 1. Default is 0.95 for 95% CI.
-    optimizer - 'TNC', 'L-BFGS-B', 'powell'. Default is 'TNC'. These are all bound constrained methods. If the bound constrained method fails, nelder-mead will be used. If nelder-mead fails the initial guess (using least squares) will be returned with a warning.
+    optimizer - The optimization algorithm used to find the solution. Must be either 'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'.
+        Specifying the optimizer will result in that optimizer being used.
+        To use all of these specify 'best' and the best result will be returned.
+        The default behaviour is to try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and 'powell') and stop once one of the optimizers finds a solution.
+        If the optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
 
     Outputs:
     c - fitted parameter from the Dual_Power model
@@ -4558,7 +4923,7 @@ class Fit_Weibull_Dual_Power:
         ]  # c, m, n, beta
 
         # fit the model using the MLE method
-        MLE_results = ALT_MLE_optimisation(
+        MLE_results = ALT_MLE_optimization(
             model="Dual_Power",
             dist="Weibull",
             LL_func=LL_func,
@@ -4576,6 +4941,7 @@ class Fit_Weibull_Dual_Power:
         self.n = MLE_results.n
         self.beta = MLE_results.beta
         self.success = MLE_results.success
+        self.optimizer = MLE_results.optimizer
 
         # confidence interval estimates of parameters
         Z = -ss.norm.ppf((1 - CI) / 2)
@@ -4589,23 +4955,48 @@ class Fit_Weibull_Dual_Power:
             np.array(tuple(right_censored_stress_1)),
             np.array(tuple(right_censored_stress_2)),
         )
-        covariance_matrix = np.linalg.inv(hessian_matrix)
-        self.c_SE = abs(covariance_matrix[0][0]) ** 0.5
-        self.m_SE = abs(covariance_matrix[1][1]) ** 0.5
-        self.n_SE = abs(covariance_matrix[2][2]) ** 0.5
-        self.beta_SE = abs(covariance_matrix[3][3]) ** 0.5
-        # c is strictly positive
-        self.c_upper = self.c * (np.exp(Z * (self.c_SE / self.c)))
-        self.c_lower = self.c * (np.exp(-Z * (self.c_SE / self.c)))
-        # m can be positive or negative
-        self.m_upper = self.m + (Z * self.m_SE)
-        self.m_lower = self.m + (-Z * self.m_SE)
-        # n can be positive or negative
-        self.n_upper = self.n + (Z * self.n_SE)
-        self.n_lower = self.n + (-Z * self.n_SE)
-        # beta is strictly positive
-        self.beta_upper = self.beta * (np.exp(Z * (self.beta_SE / self.beta)))
-        self.beta_lower = self.beta * (np.exp(-Z * (self.beta_SE / self.beta)))
+        try:
+            covariance_matrix = np.linalg.inv(hessian_matrix)
+            self.c_SE = abs(covariance_matrix[0][0]) ** 0.5
+            self.m_SE = abs(covariance_matrix[1][1]) ** 0.5
+            self.n_SE = abs(covariance_matrix[2][2]) ** 0.5
+            self.beta_SE = abs(covariance_matrix[3][3]) ** 0.5
+            # c is strictly positive
+            self.c_upper = self.c * (np.exp(Z * (self.c_SE / self.c)))
+            self.c_lower = self.c * (np.exp(-Z * (self.c_SE / self.c)))
+            # m can be positive or negative
+            self.m_upper = self.m + (Z * self.m_SE)
+            self.m_lower = self.m + (-Z * self.m_SE)
+            # n can be positive or negative
+            self.n_upper = self.n + (Z * self.n_SE)
+            self.n_lower = self.n + (-Z * self.n_SE)
+            # beta is strictly positive
+            self.beta_upper = self.beta * (np.exp(Z * (self.beta_SE / self.beta)))
+            self.beta_lower = self.beta * (np.exp(-Z * (self.beta_SE / self.beta)))
+        except LinAlgError:
+            # this exception is rare but can occur with some optimizers and small data sets
+            colorprint(
+                str(
+                    "WARNING: The hessian matrix obtained using the "
+                    + self.optimizer
+                    + " optimizer is non-invertable for the Weibull_Dual_Power model.\n"
+                    "Confidence interval estimates of the parameters could not be obtained.\n"
+                    "You may want to try fitting the model using a different optimizer."
+                ),
+                text_color="red",
+            )
+            self.c_SE = 0
+            self.m_SE = 0
+            self.n_SE = 0
+            self.beta_SE = 0
+            self.c_upper = self.c
+            self.c_lower = self.c
+            self.m_upper = self.m
+            self.m_lower = self.m
+            self.n_upper = self.n
+            self.n_lower = self.n
+            self.beta_upper = self.beta
+            self.beta_lower = self.beta
 
         # results dataframe
         results_data = {
@@ -4746,6 +5137,8 @@ class Fit_Weibull_Dual_Power:
                 underline=True,
             )
             print("Analysis method: Maximum Likelihood Estimation (MLE)")
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
             print(
                 "Failures / Right censored:",
                 str(str(len(failures)) + "/" + str(len(right_censored))),
@@ -4844,7 +5237,12 @@ class Fit_Lognormal_Exponential:
     show_probability_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     show_life_stress_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     CI - confidence interval for estimating confidence limits on parameters. Must be between 0 and 1. Default is 0.95 for 95% CI.
-    optimizer - 'TNC', 'L-BFGS-B', 'powell'. Default is 'TNC'. These are all bound constrained methods. If the bound constrained method fails, nelder-mead will be used. If nelder-mead fails the initial guess (using least squares) will be returned with a warning.
+    optimizer - The optimization algorithm used to find the solution. Must be either 'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'.
+        Specifying the optimizer will result in that optimizer being used.
+        To use all of these specify 'best' and the best result will be returned.
+        The default behaviour is to try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and 'powell') and stop once one of the optimizers finds a solution.
+        If the optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
 
     Outputs:
     a - fitted parameter from the Exponential model
@@ -4955,7 +5353,7 @@ class Fit_Lognormal_Exponential:
         ]  # a, b, sigma
 
         # fit the model using the MLE method
-        MLE_results = ALT_MLE_optimisation(
+        MLE_results = ALT_MLE_optimization(
             model="Exponential",
             dist="Lognormal",
             LL_func=LL_func,
@@ -4970,6 +5368,7 @@ class Fit_Lognormal_Exponential:
         self.b = MLE_results.b
         self.sigma = MLE_results.sigma
         self.success = MLE_results.success
+        self.optimizer = MLE_results.optimizer
 
         # confidence interval estimates of parameters
         Z = -ss.norm.ppf((1 - CI) / 2)
@@ -4981,19 +5380,41 @@ class Fit_Lognormal_Exponential:
             np.array(tuple(failure_stress)),
             np.array(tuple(right_censored_stress)),
         )
-        covariance_matrix = np.linalg.inv(hessian_matrix)
-        self.a_SE = abs(covariance_matrix[0][0]) ** 0.5
-        self.b_SE = abs(covariance_matrix[1][1]) ** 0.5
-        self.sigma_SE = abs(covariance_matrix[2][2]) ** 0.5
-        # a can be positive or negative
-        self.a_upper = self.a + (Z * self.a_SE)
-        self.a_lower = self.a + (-Z * self.a_SE)
-        # b is strictly positive
-        self.b_upper = self.b * (np.exp(Z * (self.b_SE / self.b)))
-        self.b_lower = self.b * (np.exp(-Z * (self.b_SE / self.b)))
-        # sigma is strictly positive
-        self.sigma_upper = self.sigma * (np.exp(Z * (self.sigma_SE / self.sigma)))
-        self.sigma_lower = self.sigma * (np.exp(-Z * (self.sigma_SE / self.sigma)))
+        try:
+            covariance_matrix = np.linalg.inv(hessian_matrix)
+            self.a_SE = abs(covariance_matrix[0][0]) ** 0.5
+            self.b_SE = abs(covariance_matrix[1][1]) ** 0.5
+            self.sigma_SE = abs(covariance_matrix[2][2]) ** 0.5
+            # a can be positive or negative
+            self.a_upper = self.a + (Z * self.a_SE)
+            self.a_lower = self.a + (-Z * self.a_SE)
+            # b is strictly positive
+            self.b_upper = self.b * (np.exp(Z * (self.b_SE / self.b)))
+            self.b_lower = self.b * (np.exp(-Z * (self.b_SE / self.b)))
+            # sigma is strictly positive
+            self.sigma_upper = self.sigma * (np.exp(Z * (self.sigma_SE / self.sigma)))
+            self.sigma_lower = self.sigma * (np.exp(-Z * (self.sigma_SE / self.sigma)))
+        except LinAlgError:
+            # this exception is rare but can occur with some optimizers and small data sets
+            colorprint(
+                str(
+                    "WARNING: The hessian matrix obtained using the "
+                    + self.optimizer
+                    + " optimizer is non-invertable for the Lognormal_Exponential model.\n"
+                    "Confidence interval estimates of the parameters could not be obtained.\n"
+                    "You may want to try fitting the model using a different optimizer."
+                ),
+                text_color="red",
+            )
+            self.a_SE = 0
+            self.b_SE = 0
+            self.sigma_SE = 0
+            self.a_upper = self.a
+            self.a_lower = self.a
+            self.b_upper = self.b
+            self.b_lower = self.b
+            self.sigma_upper = self.sigma
+            self.sigma_lower = self.sigma
 
         # results dataframe
         results_data = {
@@ -5117,6 +5538,8 @@ class Fit_Lognormal_Exponential:
                 underline=True,
             )
             print("Analysis method: Maximum Likelihood Estimation (MLE)")
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
             print(
                 "Failures / Right censored:",
                 str(str(len(failures)) + "/" + str(len(right_censored))),
@@ -5220,7 +5643,12 @@ class Fit_Lognormal_Eyring:
     show_probability_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     show_life_stress_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     CI - confidence interval for estimating confidence limits on parameters. Must be between 0 and 1. Default is 0.95 for 95% CI.
-    optimizer - 'TNC', 'L-BFGS-B', 'powell'. Default is 'TNC'. These are all bound constrained methods. If the bound constrained method fails, nelder-mead will be used. If nelder-mead fails the initial guess (using least squares) will be returned with a warning.
+    optimizer - The optimization algorithm used to find the solution. Must be either 'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'.
+        Specifying the optimizer will result in that optimizer being used.
+        To use all of these specify 'best' and the best result will be returned.
+        The default behaviour is to try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and 'powell') and stop once one of the optimizers finds a solution.
+        If the optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
 
     Outputs:
     a - fitted parameter from the Eyring model
@@ -5331,7 +5759,7 @@ class Fit_Lognormal_Eyring:
         ]  # a, c, sigma
 
         # fit the model using the MLE method
-        MLE_results = ALT_MLE_optimisation(
+        MLE_results = ALT_MLE_optimization(
             model="Eyring",
             dist="Lognormal",
             LL_func=LL_func,
@@ -5346,6 +5774,7 @@ class Fit_Lognormal_Eyring:
         self.c = MLE_results.c
         self.sigma = MLE_results.sigma
         self.success = MLE_results.success
+        self.optimizer = MLE_results.optimizer
 
         # confidence interval estimates of parameters
         Z = -ss.norm.ppf((1 - CI) / 2)
@@ -5357,19 +5786,41 @@ class Fit_Lognormal_Eyring:
             np.array(tuple(failure_stress)),
             np.array(tuple(right_censored_stress)),
         )
-        covariance_matrix = np.linalg.inv(hessian_matrix)
-        self.a_SE = abs(covariance_matrix[0][0]) ** 0.5
-        self.c_SE = abs(covariance_matrix[1][1]) ** 0.5
-        self.sigma_SE = abs(covariance_matrix[2][2]) ** 0.5
-        # a can be positive or negative
-        self.a_upper = self.a + (Z * self.a_SE)
-        self.a_lower = self.a + (-Z * self.a_SE)
-        # c can be positive or negative
-        self.c_upper = self.c + (Z * self.c_SE)
-        self.c_lower = self.c + (-Z * self.c_SE)
-        # sigma is strictly positive
-        self.sigma_upper = self.sigma * (np.exp(Z * (self.sigma_SE / self.sigma)))
-        self.sigma_lower = self.sigma * (np.exp(-Z * (self.sigma_SE / self.sigma)))
+        try:
+            covariance_matrix = np.linalg.inv(hessian_matrix)
+            self.a_SE = abs(covariance_matrix[0][0]) ** 0.5
+            self.c_SE = abs(covariance_matrix[1][1]) ** 0.5
+            self.sigma_SE = abs(covariance_matrix[2][2]) ** 0.5
+            # a can be positive or negative
+            self.a_upper = self.a + (Z * self.a_SE)
+            self.a_lower = self.a + (-Z * self.a_SE)
+            # c can be positive or negative
+            self.c_upper = self.c + (Z * self.c_SE)
+            self.c_lower = self.c + (-Z * self.c_SE)
+            # sigma is strictly positive
+            self.sigma_upper = self.sigma * (np.exp(Z * (self.sigma_SE / self.sigma)))
+            self.sigma_lower = self.sigma * (np.exp(-Z * (self.sigma_SE / self.sigma)))
+        except LinAlgError:
+            # this exception is rare but can occur with some optimizers and small data sets
+            colorprint(
+                str(
+                    "WARNING: The hessian matrix obtained using the "
+                    + self.optimizer
+                    + " optimizer is non-invertable for the Lognormal_Eyring model.\n"
+                    "Confidence interval estimates of the parameters could not be obtained.\n"
+                    "You may want to try fitting the model using a different optimizer."
+                ),
+                text_color="red",
+            )
+            self.a_SE = 0
+            self.c_SE = 0
+            self.sigma_SE = 0
+            self.a_upper = self.a
+            self.a_lower = self.a
+            self.c_upper = self.c
+            self.c_lower = self.c
+            self.sigma_upper = self.sigma
+            self.sigma_lower = self.sigma
 
         # results dataframe
         results_data = {
@@ -5489,6 +5940,8 @@ class Fit_Lognormal_Eyring:
                 underline=True,
             )
             print("Analysis method: Maximum Likelihood Estimation (MLE)")
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
             print(
                 "Failures / Right censored:",
                 str(str(len(failures)) + "/" + str(len(right_censored))),
@@ -5587,7 +6040,12 @@ class Fit_Lognormal_Power:
     show_probability_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     show_life_stress_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     CI - confidence interval for estimating confidence limits on parameters. Must be between 0 and 1. Default is 0.95 for 95% CI.
-    optimizer - 'TNC', 'L-BFGS-B', 'powell'. Default is 'TNC'. These are all bound constrained methods. If the bound constrained method fails, nelder-mead will be used. If nelder-mead fails the initial guess (using least squares) will be returned with a warning.
+    optimizer - The optimization algorithm used to find the solution. Must be either 'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'.
+        Specifying the optimizer will result in that optimizer being used.
+        To use all of these specify 'best' and the best result will be returned.
+        The default behaviour is to try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and 'powell') and stop once one of the optimizers finds a solution.
+        If the optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
 
     Outputs:
     a - fitted parameter from the Power model
@@ -5698,7 +6156,7 @@ class Fit_Lognormal_Power:
         ]  # a, n, sigma
 
         # fit the model using the MLE method
-        MLE_results = ALT_MLE_optimisation(
+        MLE_results = ALT_MLE_optimization(
             model="Power",
             dist="Lognormal",
             LL_func=LL_func,
@@ -5713,6 +6171,7 @@ class Fit_Lognormal_Power:
         self.n = MLE_results.n
         self.sigma = MLE_results.sigma
         self.success = MLE_results.success
+        self.optimizer = MLE_results.optimizer
 
         # confidence interval estimates of parameters
         Z = -ss.norm.ppf((1 - CI) / 2)
@@ -5724,19 +6183,41 @@ class Fit_Lognormal_Power:
             np.array(tuple(failure_stress)),
             np.array(tuple(right_censored_stress)),
         )
-        covariance_matrix = np.linalg.inv(hessian_matrix)
-        self.a_SE = abs(covariance_matrix[0][0]) ** 0.5
-        self.n_SE = abs(covariance_matrix[1][1]) ** 0.5
-        self.sigma_SE = abs(covariance_matrix[2][2]) ** 0.5
-        # a is strictly positive
-        self.a_upper = self.a * (np.exp(Z * (self.a_SE / self.a)))
-        self.a_lower = self.a * (np.exp(-Z * (self.a_SE / self.a)))
-        # n can be positive or negative
-        self.n_upper = self.n + (Z * self.n_SE)
-        self.n_lower = self.n + (-Z * self.n_SE)
-        # sigma is strictly positive
-        self.sigma_upper = self.sigma * (np.exp(Z * (self.sigma_SE / self.sigma)))
-        self.sigma_lower = self.sigma * (np.exp(-Z * (self.sigma_SE / self.sigma)))
+        try:
+            covariance_matrix = np.linalg.inv(hessian_matrix)
+            self.a_SE = abs(covariance_matrix[0][0]) ** 0.5
+            self.n_SE = abs(covariance_matrix[1][1]) ** 0.5
+            self.sigma_SE = abs(covariance_matrix[2][2]) ** 0.5
+            # a is strictly positive
+            self.a_upper = self.a * (np.exp(Z * (self.a_SE / self.a)))
+            self.a_lower = self.a * (np.exp(-Z * (self.a_SE / self.a)))
+            # n can be positive or negative
+            self.n_upper = self.n + (Z * self.n_SE)
+            self.n_lower = self.n + (-Z * self.n_SE)
+            # sigma is strictly positive
+            self.sigma_upper = self.sigma * (np.exp(Z * (self.sigma_SE / self.sigma)))
+            self.sigma_lower = self.sigma * (np.exp(-Z * (self.sigma_SE / self.sigma)))
+        except LinAlgError:
+            # this exception is rare but can occur with some optimizers and small data sets
+            colorprint(
+                str(
+                    "WARNING: The hessian matrix obtained using the "
+                    + self.optimizer
+                    + " optimizer is non-invertable for the Lognormal_Power model.\n"
+                    "Confidence interval estimates of the parameters could not be obtained.\n"
+                    "You may want to try fitting the model using a different optimizer."
+                ),
+                text_color="red",
+            )
+            self.a_SE = 0
+            self.n_SE = 0
+            self.sigma_SE = 0
+            self.a_upper = self.a
+            self.a_lower = self.a
+            self.n_upper = self.n
+            self.n_lower = self.n
+            self.sigma_upper = self.sigma
+            self.sigma_lower = self.sigma
 
         # results dataframe
         results_data = {
@@ -5856,6 +6337,8 @@ class Fit_Lognormal_Power:
                 underline=True,
             )
             print("Analysis method: Maximum Likelihood Estimation (MLE)")
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
             print(
                 "Failures / Right censored:",
                 str(str(len(failures)) + "/" + str(len(right_censored))),
@@ -5954,7 +6437,12 @@ class Fit_Lognormal_Dual_Exponential:
     show_probability_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     show_life_stress_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     CI - confidence interval for estimating confidence limits on parameters. Must be between 0 and 1. Default is 0.95 for 95% CI.
-    optimizer - 'TNC', 'L-BFGS-B', 'powell'. Default is 'TNC'. These are all bound constrained methods. If the bound constrained method fails, nelder-mead will be used. If nelder-mead fails the initial guess (using least squares) will be returned with a warning.
+    optimizer - The optimization algorithm used to find the solution. Must be either 'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'.
+        Specifying the optimizer will result in that optimizer being used.
+        To use all of these specify 'best' and the best result will be returned.
+        The default behaviour is to try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and 'powell') and stop once one of the optimizers finds a solution.
+        If the optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
 
     Outputs:
     a - fitted parameter from the Dual_Exponential model
@@ -6079,7 +6567,7 @@ class Fit_Lognormal_Dual_Exponential:
         ]  # a, b, c, sigma
 
         # fit the model using the MLE method
-        MLE_results = ALT_MLE_optimisation(
+        MLE_results = ALT_MLE_optimization(
             model="Dual_Exponential",
             dist="Lognormal",
             LL_func=LL_func,
@@ -6097,6 +6585,7 @@ class Fit_Lognormal_Dual_Exponential:
         self.c = MLE_results.c
         self.sigma = MLE_results.sigma
         self.success = MLE_results.success
+        self.optimizer = MLE_results.optimizer
 
         # confidence interval estimates of parameters
         Z = -ss.norm.ppf((1 - CI) / 2)
@@ -6110,23 +6599,48 @@ class Fit_Lognormal_Dual_Exponential:
             np.array(tuple(right_censored_stress_1)),
             np.array(tuple(right_censored_stress_2)),
         )
-        covariance_matrix = np.linalg.inv(hessian_matrix)
-        self.a_SE = abs(covariance_matrix[0][0]) ** 0.5
-        self.b_SE = abs(covariance_matrix[1][1]) ** 0.5
-        self.c_SE = abs(covariance_matrix[2][2]) ** 0.5
-        self.sigma_SE = abs(covariance_matrix[3][3]) ** 0.5
-        # a can be positive or negative
-        self.a_upper = self.a + (Z * self.a_SE)
-        self.a_lower = self.a + (-Z * self.a_SE)
-        # b can be positive or negative
-        self.b_upper = self.b + (Z * self.b_SE)
-        self.b_lower = self.b + (-Z * self.b_SE)
-        # c is strictly positive
-        self.c_upper = self.c * (np.exp(Z * (self.c_SE / self.c)))
-        self.c_lower = self.c * (np.exp(-Z * (self.c_SE / self.c)))
-        # sigma is strictly positive
-        self.sigma_upper = self.sigma * (np.exp(Z * (self.sigma_SE / self.sigma)))
-        self.sigma_lower = self.sigma * (np.exp(-Z * (self.sigma_SE / self.sigma)))
+        try:
+            covariance_matrix = np.linalg.inv(hessian_matrix)
+            self.a_SE = abs(covariance_matrix[0][0]) ** 0.5
+            self.b_SE = abs(covariance_matrix[1][1]) ** 0.5
+            self.c_SE = abs(covariance_matrix[2][2]) ** 0.5
+            self.sigma_SE = abs(covariance_matrix[3][3]) ** 0.5
+            # a can be positive or negative
+            self.a_upper = self.a + (Z * self.a_SE)
+            self.a_lower = self.a + (-Z * self.a_SE)
+            # b can be positive or negative
+            self.b_upper = self.b + (Z * self.b_SE)
+            self.b_lower = self.b + (-Z * self.b_SE)
+            # c is strictly positive
+            self.c_upper = self.c * (np.exp(Z * (self.c_SE / self.c)))
+            self.c_lower = self.c * (np.exp(-Z * (self.c_SE / self.c)))
+            # sigma is strictly positive
+            self.sigma_upper = self.sigma * (np.exp(Z * (self.sigma_SE / self.sigma)))
+            self.sigma_lower = self.sigma * (np.exp(-Z * (self.sigma_SE / self.sigma)))
+        except LinAlgError:
+            # this exception is rare but can occur with some optimizers and small data sets
+            colorprint(
+                str(
+                    "WARNING: The hessian matrix obtained using the "
+                    + self.optimizer
+                    + " optimizer is non-invertable for the Lognormal_Dual_Exponential model.\n"
+                    "Confidence interval estimates of the parameters could not be obtained.\n"
+                    "You may want to try fitting the model using a different optimizer."
+                ),
+                text_color="red",
+            )
+            self.a_SE = 0
+            self.b_SE = 0
+            self.c_SE = 0
+            self.sigma_SE = 0
+            self.a_upper = self.a
+            self.a_lower = self.a
+            self.b_upper = self.b
+            self.b_lower = self.b
+            self.c_upper = self.c
+            self.c_lower = self.c
+            self.sigma_upper = self.sigma
+            self.sigma_lower = self.sigma
 
         # results dataframe
         results_data = {
@@ -6269,6 +6783,8 @@ class Fit_Lognormal_Dual_Exponential:
                 underline=True,
             )
             print("Analysis method: Maximum Likelihood Estimation (MLE)")
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
             print(
                 "Failures / Right censored:",
                 str(str(len(failures)) + "/" + str(len(right_censored))),
@@ -6370,7 +6886,12 @@ class Fit_Lognormal_Power_Exponential:
     show_probability_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     show_life_stress_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     CI - confidence interval for estimating confidence limits on parameters. Must be between 0 and 1. Default is 0.95 for 95% CI.
-    optimizer - 'TNC', 'L-BFGS-B', 'powell'. Default is 'TNC'. These are all bound constrained methods. If the bound constrained method fails, nelder-mead will be used. If nelder-mead fails the initial guess (using least squares) will be returned with a warning.
+    optimizer - The optimization algorithm used to find the solution. Must be either 'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'.
+        Specifying the optimizer will result in that optimizer being used.
+        To use all of these specify 'best' and the best result will be returned.
+        The default behaviour is to try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and 'powell') and stop once one of the optimizers finds a solution.
+        If the optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
 
     Outputs:
     a - fitted parameter from the Power_Exponential model
@@ -6495,7 +7016,7 @@ class Fit_Lognormal_Power_Exponential:
         ]  # a, c, n, sigma
 
         # fit the model using the MLE method
-        MLE_results = ALT_MLE_optimisation(
+        MLE_results = ALT_MLE_optimization(
             model="Power_Exponential",
             dist="Lognormal",
             LL_func=LL_func,
@@ -6513,6 +7034,7 @@ class Fit_Lognormal_Power_Exponential:
         self.n = MLE_results.n
         self.sigma = MLE_results.sigma
         self.success = MLE_results.success
+        self.optimizer = MLE_results.optimizer
 
         # confidence interval estimates of parameters
         Z = -ss.norm.ppf((1 - CI) / 2)
@@ -6526,23 +7048,48 @@ class Fit_Lognormal_Power_Exponential:
             np.array(tuple(right_censored_stress_1)),
             np.array(tuple(right_censored_stress_2)),
         )
-        covariance_matrix = np.linalg.inv(hessian_matrix)
-        self.a_SE = abs(covariance_matrix[0][0]) ** 0.5
-        self.c_SE = abs(covariance_matrix[1][1]) ** 0.5
-        self.n_SE = abs(covariance_matrix[2][2]) ** 0.5
-        self.sigma_SE = abs(covariance_matrix[3][3]) ** 0.5
-        # a can be positive or negative
-        self.a_upper = self.a + (Z * self.a_SE)
-        self.a_lower = self.a + (-Z * self.a_SE)
-        # c is strictly positive
-        self.c_upper = self.c * (np.exp(Z * (self.c_SE / self.c)))
-        self.c_lower = self.c * (np.exp(-Z * (self.c_SE / self.c)))
-        # n can be positive or negative
-        self.n_upper = self.n + (Z * self.n_SE)
-        self.n_lower = self.n + (-Z * self.n_SE)
-        # sigma is strictly positive
-        self.sigma_upper = self.sigma * (np.exp(Z * (self.sigma_SE / self.sigma)))
-        self.sigma_lower = self.sigma * (np.exp(-Z * (self.sigma_SE / self.sigma)))
+        try:
+            covariance_matrix = np.linalg.inv(hessian_matrix)
+            self.a_SE = abs(covariance_matrix[0][0]) ** 0.5
+            self.c_SE = abs(covariance_matrix[1][1]) ** 0.5
+            self.n_SE = abs(covariance_matrix[2][2]) ** 0.5
+            self.sigma_SE = abs(covariance_matrix[3][3]) ** 0.5
+            # a can be positive or negative
+            self.a_upper = self.a + (Z * self.a_SE)
+            self.a_lower = self.a + (-Z * self.a_SE)
+            # c is strictly positive
+            self.c_upper = self.c * (np.exp(Z * (self.c_SE / self.c)))
+            self.c_lower = self.c * (np.exp(-Z * (self.c_SE / self.c)))
+            # n can be positive or negative
+            self.n_upper = self.n + (Z * self.n_SE)
+            self.n_lower = self.n + (-Z * self.n_SE)
+            # sigma is strictly positive
+            self.sigma_upper = self.sigma * (np.exp(Z * (self.sigma_SE / self.sigma)))
+            self.sigma_lower = self.sigma * (np.exp(-Z * (self.sigma_SE / self.sigma)))
+        except LinAlgError:
+            # this exception is rare but can occur with some optimizers and small data sets
+            colorprint(
+                str(
+                    "WARNING: The hessian matrix obtained using the "
+                    + self.optimizer
+                    + " optimizer is non-invertable for the Lognormal_Power_Exponential model.\n"
+                    "Confidence interval estimates of the parameters could not be obtained.\n"
+                    "You may want to try fitting the model using a different optimizer."
+                ),
+                text_color="red",
+            )
+            self.a_SE = 0
+            self.c_SE = 0
+            self.n_SE = 0
+            self.sigma_SE = 0
+            self.a_upper = self.a
+            self.a_lower = self.a
+            self.c_upper = self.c
+            self.c_lower = self.c
+            self.n_upper = self.n
+            self.n_lower = self.n
+            self.sigma_upper = self.sigma
+            self.sigma_lower = self.sigma
 
         # results dataframe
         results_data = {
@@ -6685,6 +7232,8 @@ class Fit_Lognormal_Power_Exponential:
                 underline=True,
             )
             print("Analysis method: Maximum Likelihood Estimation (MLE)")
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
             print(
                 "Failures / Right censored:",
                 str(str(len(failures)) + "/" + str(len(right_censored))),
@@ -6785,7 +7334,12 @@ class Fit_Lognormal_Dual_Power:
     show_probability_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     show_life_stress_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     CI - confidence interval for estimating confidence limits on parameters. Must be between 0 and 1. Default is 0.95 for 95% CI.
-    optimizer - 'TNC', 'L-BFGS-B', 'powell'. Default is 'TNC'. These are all bound constrained methods. If the bound constrained method fails, nelder-mead will be used. If nelder-mead fails the initial guess (using least squares) will be returned with a warning.
+    optimizer - The optimization algorithm used to find the solution. Must be either 'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'.
+        Specifying the optimizer will result in that optimizer being used.
+        To use all of these specify 'best' and the best result will be returned.
+        The default behaviour is to try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and 'powell') and stop once one of the optimizers finds a solution.
+        If the optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
 
     Outputs:
     c - fitted parameter from the Dual_Power model
@@ -6910,7 +7464,7 @@ class Fit_Lognormal_Dual_Power:
         ]  # c, m, n, sigma
 
         # fit the model using the MLE method
-        MLE_results = ALT_MLE_optimisation(
+        MLE_results = ALT_MLE_optimization(
             model="Dual_Power",
             dist="Lognormal",
             LL_func=LL_func,
@@ -6928,6 +7482,7 @@ class Fit_Lognormal_Dual_Power:
         self.n = MLE_results.n
         self.sigma = MLE_results.sigma
         self.success = MLE_results.success
+        self.optimizer = MLE_results.optimizer
 
         # confidence interval estimates of parameters
         Z = -ss.norm.ppf((1 - CI) / 2)
@@ -6941,23 +7496,48 @@ class Fit_Lognormal_Dual_Power:
             np.array(tuple(right_censored_stress_1)),
             np.array(tuple(right_censored_stress_2)),
         )
-        covariance_matrix = np.linalg.inv(hessian_matrix)
-        self.c_SE = abs(covariance_matrix[0][0]) ** 0.5
-        self.m_SE = abs(covariance_matrix[1][1]) ** 0.5
-        self.n_SE = abs(covariance_matrix[2][2]) ** 0.5
-        self.sigma_SE = abs(covariance_matrix[3][3]) ** 0.5
-        # c is strictly positive
-        self.c_upper = self.c * (np.exp(Z * (self.c_SE / self.c)))
-        self.c_lower = self.c * (np.exp(-Z * (self.c_SE / self.c)))
-        # m can be positive or negative
-        self.m_upper = self.m + (Z * self.m_SE)
-        self.m_lower = self.m + (-Z * self.m_SE)
-        # n can be positive or negative
-        self.n_upper = self.n + (Z * self.n_SE)
-        self.n_lower = self.n + (-Z * self.n_SE)
-        # sigma is strictly positive
-        self.sigma_upper = self.sigma * (np.exp(Z * (self.sigma_SE / self.sigma)))
-        self.sigma_lower = self.sigma * (np.exp(-Z * (self.sigma_SE / self.sigma)))
+        try:
+            covariance_matrix = np.linalg.inv(hessian_matrix)
+            self.c_SE = abs(covariance_matrix[0][0]) ** 0.5
+            self.m_SE = abs(covariance_matrix[1][1]) ** 0.5
+            self.n_SE = abs(covariance_matrix[2][2]) ** 0.5
+            self.sigma_SE = abs(covariance_matrix[3][3]) ** 0.5
+            # c is strictly positive
+            self.c_upper = self.c * (np.exp(Z * (self.c_SE / self.c)))
+            self.c_lower = self.c * (np.exp(-Z * (self.c_SE / self.c)))
+            # m can be positive or negative
+            self.m_upper = self.m + (Z * self.m_SE)
+            self.m_lower = self.m + (-Z * self.m_SE)
+            # n can be positive or negative
+            self.n_upper = self.n + (Z * self.n_SE)
+            self.n_lower = self.n + (-Z * self.n_SE)
+            # sigma is strictly positive
+            self.sigma_upper = self.sigma * (np.exp(Z * (self.sigma_SE / self.sigma)))
+            self.sigma_lower = self.sigma * (np.exp(-Z * (self.sigma_SE / self.sigma)))
+        except LinAlgError:
+            # this exception is rare but can occur with some optimizers and small data sets
+            colorprint(
+                str(
+                    "WARNING: The hessian matrix obtained using the "
+                    + self.optimizer
+                    + " optimizer is non-invertable for the Lognormal_Dual_Power model.\n"
+                    "Confidence interval estimates of the parameters could not be obtained.\n"
+                    "You may want to try fitting the model using a different optimizer."
+                ),
+                text_color="red",
+            )
+            self.c_SE = 0
+            self.m_SE = 0
+            self.n_SE = 0
+            self.sigma_SE = 0
+            self.c_upper = self.c
+            self.c_lower = self.c
+            self.m_upper = self.m
+            self.m_lower = self.m
+            self.n_upper = self.n
+            self.n_lower = self.n
+            self.sigma_upper = self.sigma
+            self.sigma_lower = self.sigma
 
         # results dataframe
         results_data = {
@@ -7100,6 +7680,8 @@ class Fit_Lognormal_Dual_Power:
                 underline=True,
             )
             print("Analysis method: Maximum Likelihood Estimation (MLE)")
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
             print(
                 "Failures / Right censored:",
                 str(str(len(failures)) + "/" + str(len(right_censored))),
@@ -7201,8 +7783,12 @@ class Fit_Normal_Exponential:
     show_probability_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     show_life_stress_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     CI - confidence interval for estimating confidence limits on parameters. Must be between 0 and 1. Default is 0.95 for 95% CI.
-    optimizer - 'TNC', 'L-BFGS-B', 'powell'. Default is 'TNC'. These are all bound constrained methods. If the bound constrained method fails, nelder-mead will be used. If nelder-mead fails the initial guess (using least squares) will be returned with a warning.
-
+    optimizer - The optimization algorithm used to find the solution. Must be either 'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'.
+        Specifying the optimizer will result in that optimizer being used.
+        To use all of these specify 'best' and the best result will be returned.
+        The default behaviour is to try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and 'powell') and stop once one of the optimizers finds a solution.
+        If the optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
 
     Outputs:
     a - fitted parameter from the Exponential model
@@ -7313,7 +7899,7 @@ class Fit_Normal_Exponential:
         ]  # a, b, sigma
 
         # fit the model using the MLE method
-        MLE_results = ALT_MLE_optimisation(
+        MLE_results = ALT_MLE_optimization(
             model="Exponential",
             dist="Normal",
             LL_func=LL_func,
@@ -7328,6 +7914,7 @@ class Fit_Normal_Exponential:
         self.b = MLE_results.b
         self.sigma = MLE_results.sigma
         self.success = MLE_results.success
+        self.optimizer = MLE_results.optimizer
 
         # confidence interval estimates of parameters
         Z = -ss.norm.ppf((1 - CI) / 2)
@@ -7339,19 +7926,41 @@ class Fit_Normal_Exponential:
             np.array(tuple(failure_stress)),
             np.array(tuple(right_censored_stress)),
         )
-        covariance_matrix = np.linalg.inv(hessian_matrix)
-        self.a_SE = abs(covariance_matrix[0][0]) ** 0.5
-        self.b_SE = abs(covariance_matrix[1][1]) ** 0.5
-        self.sigma_SE = abs(covariance_matrix[2][2]) ** 0.5
-        # a can be positive or negative
-        self.a_upper = self.a + (Z * self.a_SE)
-        self.a_lower = self.a + (-Z * self.a_SE)
-        # b is strictly positive
-        self.b_upper = self.b * (np.exp(Z * (self.b_SE / self.b)))
-        self.b_lower = self.b * (np.exp(-Z * (self.b_SE / self.b)))
-        # sigma is strictly positive
-        self.sigma_upper = self.sigma * (np.exp(Z * (self.sigma_SE / self.sigma)))
-        self.sigma_lower = self.sigma * (np.exp(-Z * (self.sigma_SE / self.sigma)))
+        try:
+            covariance_matrix = np.linalg.inv(hessian_matrix)
+            self.a_SE = abs(covariance_matrix[0][0]) ** 0.5
+            self.b_SE = abs(covariance_matrix[1][1]) ** 0.5
+            self.sigma_SE = abs(covariance_matrix[2][2]) ** 0.5
+            # a can be positive or negative
+            self.a_upper = self.a + (Z * self.a_SE)
+            self.a_lower = self.a + (-Z * self.a_SE)
+            # b is strictly positive
+            self.b_upper = self.b * (np.exp(Z * (self.b_SE / self.b)))
+            self.b_lower = self.b * (np.exp(-Z * (self.b_SE / self.b)))
+            # sigma is strictly positive
+            self.sigma_upper = self.sigma * (np.exp(Z * (self.sigma_SE / self.sigma)))
+            self.sigma_lower = self.sigma * (np.exp(-Z * (self.sigma_SE / self.sigma)))
+        except LinAlgError:
+            # this exception is rare but can occur with some optimizers and small data sets
+            colorprint(
+                str(
+                    "WARNING: The hessian matrix obtained using the "
+                    + self.optimizer
+                    + " optimizer is non-invertable for the Normal_Exponential model.\n"
+                    "Confidence interval estimates of the parameters could not be obtained.\n"
+                    "You may want to try fitting the model using a different optimizer."
+                ),
+                text_color="red",
+            )
+            self.a_SE = 0
+            self.b_SE = 0
+            self.sigma_SE = 0
+            self.a_upper = self.a
+            self.a_lower = self.a
+            self.b_upper = self.b
+            self.b_lower = self.b
+            self.sigma_upper = self.sigma
+            self.sigma_lower = self.sigma
 
         # results dataframe
         results_data = {
@@ -7473,6 +8082,8 @@ class Fit_Normal_Exponential:
                 underline=True,
             )
             print("Analysis method: Maximum Likelihood Estimation (MLE)")
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
             print(
                 "Failures / Right censored:",
                 str(str(len(failures)) + "/" + str(len(right_censored))),
@@ -7573,7 +8184,12 @@ class Fit_Normal_Eyring:
     show_probability_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     show_life_stress_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     CI - confidence interval for estimating confidence limits on parameters. Must be between 0 and 1. Default is 0.95 for 95% CI.
-    optimizer - 'TNC', 'L-BFGS-B', 'powell'. Default is 'TNC'. These are all bound constrained methods. If the bound constrained method fails, nelder-mead will be used. If nelder-mead fails the initial guess (using least squares) will be returned with a warning.
+    optimizer - The optimization algorithm used to find the solution. Must be either 'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'.
+        Specifying the optimizer will result in that optimizer being used.
+        To use all of these specify 'best' and the best result will be returned.
+        The default behaviour is to try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and 'powell') and stop once one of the optimizers finds a solution.
+        If the optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
 
     Outputs:
     a - fitted parameter from the Eyring model
@@ -7684,7 +8300,7 @@ class Fit_Normal_Eyring:
         ]  # a, c, sigma
 
         # fit the model using the MLE method
-        MLE_results = ALT_MLE_optimisation(
+        MLE_results = ALT_MLE_optimization(
             model="Eyring",
             dist="Normal",
             LL_func=LL_func,
@@ -7699,6 +8315,7 @@ class Fit_Normal_Eyring:
         self.c = MLE_results.c
         self.sigma = MLE_results.sigma
         self.success = MLE_results.success
+        self.optimizer = MLE_results.optimizer
 
         # confidence interval estimates of parameters
         Z = -ss.norm.ppf((1 - CI) / 2)
@@ -7710,19 +8327,41 @@ class Fit_Normal_Eyring:
             np.array(tuple(failure_stress)),
             np.array(tuple(right_censored_stress)),
         )
-        covariance_matrix = np.linalg.inv(hessian_matrix)
-        self.a_SE = abs(covariance_matrix[0][0]) ** 0.5
-        self.c_SE = abs(covariance_matrix[1][1]) ** 0.5
-        self.sigma_SE = abs(covariance_matrix[2][2]) ** 0.5
-        # a can be positive or negative
-        self.a_upper = self.a + (Z * self.a_SE)
-        self.a_lower = self.a + (-Z * self.a_SE)
-        # c can be positive or negative
-        self.c_upper = self.c + (Z * self.c_SE)
-        self.c_lower = self.c + (-Z * self.c_SE)
-        # sigma is strictly positive
-        self.sigma_upper = self.sigma * (np.exp(Z * (self.sigma_SE / self.sigma)))
-        self.sigma_lower = self.sigma * (np.exp(-Z * (self.sigma_SE / self.sigma)))
+        try:
+            covariance_matrix = np.linalg.inv(hessian_matrix)
+            self.a_SE = abs(covariance_matrix[0][0]) ** 0.5
+            self.c_SE = abs(covariance_matrix[1][1]) ** 0.5
+            self.sigma_SE = abs(covariance_matrix[2][2]) ** 0.5
+            # a can be positive or negative
+            self.a_upper = self.a + (Z * self.a_SE)
+            self.a_lower = self.a + (-Z * self.a_SE)
+            # c can be positive or negative
+            self.c_upper = self.c + (Z * self.c_SE)
+            self.c_lower = self.c + (-Z * self.c_SE)
+            # sigma is strictly positive
+            self.sigma_upper = self.sigma * (np.exp(Z * (self.sigma_SE / self.sigma)))
+            self.sigma_lower = self.sigma * (np.exp(-Z * (self.sigma_SE / self.sigma)))
+        except LinAlgError:
+            # this exception is rare but can occur with some optimizers and small data sets
+            colorprint(
+                str(
+                    "WARNING: The hessian matrix obtained using the "
+                    + self.optimizer
+                    + " optimizer is non-invertable for the Normal_Eyring model.\n"
+                    "Confidence interval estimates of the parameters could not be obtained.\n"
+                    "You may want to try fitting the model using a different optimizer."
+                ),
+                text_color="red",
+            )
+            self.a_SE = 0
+            self.c_SE = 0
+            self.sigma_SE = 0
+            self.a_upper = self.a
+            self.a_lower = self.a
+            self.c_upper = self.c
+            self.c_lower = self.c
+            self.sigma_upper = self.sigma
+            self.sigma_lower = self.sigma
 
         # results dataframe
         results_data = {
@@ -7842,6 +8481,8 @@ class Fit_Normal_Eyring:
                 underline=True,
             )
             print("Analysis method: Maximum Likelihood Estimation (MLE)")
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
             print(
                 "Failures / Right censored:",
                 str(str(len(failures)) + "/" + str(len(right_censored))),
@@ -7935,7 +8576,12 @@ class Fit_Normal_Power:
     show_probability_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     show_life_stress_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     CI - confidence interval for estimating confidence limits on parameters. Must be between 0 and 1. Default is 0.95 for 95% CI.
-    optimizer - 'TNC', 'L-BFGS-B', 'powell'. Default is 'TNC'. These are all bound constrained methods. If the bound constrained method fails, nelder-mead will be used. If nelder-mead fails the initial guess (using least squares) will be returned with a warning.
+    optimizer - The optimization algorithm used to find the solution. Must be either 'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'.
+        Specifying the optimizer will result in that optimizer being used.
+        To use all of these specify 'best' and the best result will be returned.
+        The default behaviour is to try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and 'powell') and stop once one of the optimizers finds a solution.
+        If the optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
 
     Outputs:
     a - fitted parameter from the Power model
@@ -8046,7 +8692,7 @@ class Fit_Normal_Power:
         ]  # a, n, sigma
 
         # fit the model using the MLE method
-        MLE_results = ALT_MLE_optimisation(
+        MLE_results = ALT_MLE_optimization(
             model="Power",
             dist="Normal",
             LL_func=LL_func,
@@ -8061,6 +8707,7 @@ class Fit_Normal_Power:
         self.n = MLE_results.n
         self.sigma = MLE_results.sigma
         self.success = MLE_results.success
+        self.optimizer = MLE_results.optimizer
 
         # confidence interval estimates of parameters
         Z = -ss.norm.ppf((1 - CI) / 2)
@@ -8072,19 +8719,41 @@ class Fit_Normal_Power:
             np.array(tuple(failure_stress)),
             np.array(tuple(right_censored_stress)),
         )
-        covariance_matrix = np.linalg.inv(hessian_matrix)
-        self.a_SE = abs(covariance_matrix[0][0]) ** 0.5
-        self.n_SE = abs(covariance_matrix[1][1]) ** 0.5
-        self.sigma_SE = abs(covariance_matrix[2][2]) ** 0.5
-        # a is strictly positive
-        self.a_upper = self.a * (np.exp(Z * (self.a_SE / self.a)))
-        self.a_lower = self.a * (np.exp(-Z * (self.a_SE / self.a)))
-        # n can be positive or negative
-        self.n_upper = self.n + (Z * self.n_SE)
-        self.n_lower = self.n + (-Z * self.n_SE)
-        # sigma is strictly positive
-        self.sigma_upper = self.sigma * (np.exp(Z * (self.sigma_SE / self.sigma)))
-        self.sigma_lower = self.sigma * (np.exp(-Z * (self.sigma_SE / self.sigma)))
+        try:
+            covariance_matrix = np.linalg.inv(hessian_matrix)
+            self.a_SE = abs(covariance_matrix[0][0]) ** 0.5
+            self.n_SE = abs(covariance_matrix[1][1]) ** 0.5
+            self.sigma_SE = abs(covariance_matrix[2][2]) ** 0.5
+            # a is strictly positive
+            self.a_upper = self.a * (np.exp(Z * (self.a_SE / self.a)))
+            self.a_lower = self.a * (np.exp(-Z * (self.a_SE / self.a)))
+            # n can be positive or negative
+            self.n_upper = self.n + (Z * self.n_SE)
+            self.n_lower = self.n + (-Z * self.n_SE)
+            # sigma is strictly positive
+            self.sigma_upper = self.sigma * (np.exp(Z * (self.sigma_SE / self.sigma)))
+            self.sigma_lower = self.sigma * (np.exp(-Z * (self.sigma_SE / self.sigma)))
+        except LinAlgError:
+            # this exception is rare but can occur with some optimizers and small data sets
+            colorprint(
+                str(
+                    "WARNING: The hessian matrix obtained using the "
+                    + self.optimizer
+                    + " optimizer is non-invertable for the Normal_Power model.\n"
+                    "Confidence interval estimates of the parameters could not be obtained.\n"
+                    "You may want to try fitting the model using a different optimizer."
+                ),
+                text_color="red",
+            )
+            self.a_SE = 0
+            self.n_SE = 0
+            self.sigma_SE = 0
+            self.a_upper = self.a
+            self.a_lower = self.a
+            self.n_upper = self.n
+            self.n_lower = self.n
+            self.sigma_upper = self.sigma
+            self.sigma_lower = self.sigma
 
         # results dataframe
         results_data = {
@@ -8204,6 +8873,8 @@ class Fit_Normal_Power:
                 underline=True,
             )
             print("Analysis method: Maximum Likelihood Estimation (MLE)")
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
             print(
                 "Failures / Right censored:",
                 str(str(len(failures)) + "/" + str(len(right_censored))),
@@ -8297,7 +8968,12 @@ class Fit_Normal_Dual_Exponential:
     show_probability_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     show_life_stress_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     CI - confidence interval for estimating confidence limits on parameters. Must be between 0 and 1. Default is 0.95 for 95% CI.
-    optimizer - 'TNC', 'L-BFGS-B', 'powell'. Default is 'TNC'. These are all bound constrained methods. If the bound constrained method fails, nelder-mead will be used. If nelder-mead fails the initial guess (using least squares) will be returned with a warning.
+    optimizer - The optimization algorithm used to find the solution. Must be either 'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'.
+        Specifying the optimizer will result in that optimizer being used.
+        To use all of these specify 'best' and the best result will be returned.
+        The default behaviour is to try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and 'powell') and stop once one of the optimizers finds a solution.
+        If the optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
 
     Outputs:
     a - fitted parameter from the Dual_Exponential model
@@ -8422,7 +9098,7 @@ class Fit_Normal_Dual_Exponential:
         ]  # a, b, c, sigma
 
         # fit the model using the MLE method
-        MLE_results = ALT_MLE_optimisation(
+        MLE_results = ALT_MLE_optimization(
             model="Dual_Exponential",
             dist="Normal",
             LL_func=LL_func,
@@ -8440,6 +9116,7 @@ class Fit_Normal_Dual_Exponential:
         self.c = MLE_results.c
         self.sigma = MLE_results.sigma
         self.success = MLE_results.success
+        self.optimizer = MLE_results.optimizer
 
         # confidence interval estimates of parameters
         Z = -ss.norm.ppf((1 - CI) / 2)
@@ -8453,23 +9130,48 @@ class Fit_Normal_Dual_Exponential:
             np.array(tuple(right_censored_stress_1)),
             np.array(tuple(right_censored_stress_2)),
         )
-        covariance_matrix = np.linalg.inv(hessian_matrix)
-        self.a_SE = abs(covariance_matrix[0][0]) ** 0.5
-        self.b_SE = abs(covariance_matrix[1][1]) ** 0.5
-        self.c_SE = abs(covariance_matrix[2][2]) ** 0.5
-        self.sigma_SE = abs(covariance_matrix[3][3]) ** 0.5
-        # a can be positive or negative
-        self.a_upper = self.a + (Z * self.a_SE)
-        self.a_lower = self.a + (-Z * self.a_SE)
-        # b can be positive or negative
-        self.b_upper = self.b + (Z * self.b_SE)
-        self.b_lower = self.b + (-Z * self.b_SE)
-        # c is strictly positive
-        self.c_upper = self.c * (np.exp(Z * (self.c_SE / self.c)))
-        self.c_lower = self.c * (np.exp(-Z * (self.c_SE / self.c)))
-        # sigma is strictly positive
-        self.sigma_upper = self.sigma * (np.exp(Z * (self.sigma_SE / self.sigma)))
-        self.sigma_lower = self.sigma * (np.exp(-Z * (self.sigma_SE / self.sigma)))
+        try:
+            covariance_matrix = np.linalg.inv(hessian_matrix)
+            self.a_SE = abs(covariance_matrix[0][0]) ** 0.5
+            self.b_SE = abs(covariance_matrix[1][1]) ** 0.5
+            self.c_SE = abs(covariance_matrix[2][2]) ** 0.5
+            self.sigma_SE = abs(covariance_matrix[3][3]) ** 0.5
+            # a can be positive or negative
+            self.a_upper = self.a + (Z * self.a_SE)
+            self.a_lower = self.a + (-Z * self.a_SE)
+            # b can be positive or negative
+            self.b_upper = self.b + (Z * self.b_SE)
+            self.b_lower = self.b + (-Z * self.b_SE)
+            # c is strictly positive
+            self.c_upper = self.c * (np.exp(Z * (self.c_SE / self.c)))
+            self.c_lower = self.c * (np.exp(-Z * (self.c_SE / self.c)))
+            # sigma is strictly positive
+            self.sigma_upper = self.sigma * (np.exp(Z * (self.sigma_SE / self.sigma)))
+            self.sigma_lower = self.sigma * (np.exp(-Z * (self.sigma_SE / self.sigma)))
+        except LinAlgError:
+            # this exception is rare but can occur with some optimizers and small data sets
+            colorprint(
+                str(
+                    "WARNING: The hessian matrix obtained using the "
+                    + self.optimizer
+                    + " optimizer is non-invertable for the Normal_Dual_Exponential model.\n"
+                    "Confidence interval estimates of the parameters could not be obtained.\n"
+                    "You may want to try fitting the model using a different optimizer."
+                ),
+                text_color="red",
+            )
+            self.a_SE = 0
+            self.b_SE = 0
+            self.c_SE = 0
+            self.sigma_SE = 0
+            self.a_upper = self.a
+            self.a_lower = self.a
+            self.b_upper = self.b
+            self.b_lower = self.b
+            self.c_upper = self.c
+            self.c_lower = self.c
+            self.sigma_upper = self.sigma
+            self.sigma_lower = self.sigma
 
         # results dataframe
         results_data = {
@@ -8612,6 +9314,8 @@ class Fit_Normal_Dual_Exponential:
                 underline=True,
             )
             print("Analysis method: Maximum Likelihood Estimation (MLE)")
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
             print(
                 "Failures / Right censored:",
                 str(str(len(failures)) + "/" + str(len(right_censored))),
@@ -8712,7 +9416,12 @@ class Fit_Normal_Power_Exponential:
     show_probability_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     show_life_stress_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     CI - confidence interval for estimating confidence limits on parameters. Must be between 0 and 1. Default is 0.95 for 95% CI.
-    optimizer - 'TNC', 'L-BFGS-B', 'powell'. Default is 'TNC'. These are all bound constrained methods. If the bound constrained method fails, nelder-mead will be used. If nelder-mead fails the initial guess (using least squares) will be returned with a warning.
+    optimizer - The optimization algorithm used to find the solution. Must be either 'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'.
+        Specifying the optimizer will result in that optimizer being used.
+        To use all of these specify 'best' and the best result will be returned.
+        The default behaviour is to try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and 'powell') and stop once one of the optimizers finds a solution.
+        If the optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
 
     Outputs:
     a - fitted parameter from the Power_Exponential model
@@ -8837,7 +9546,7 @@ class Fit_Normal_Power_Exponential:
         ]  # a, c, n, sigma
 
         # fit the model using the MLE method
-        MLE_results = ALT_MLE_optimisation(
+        MLE_results = ALT_MLE_optimization(
             model="Power_Exponential",
             dist="Normal",
             LL_func=LL_func,
@@ -8855,6 +9564,7 @@ class Fit_Normal_Power_Exponential:
         self.n = MLE_results.n
         self.sigma = MLE_results.sigma
         self.success = MLE_results.success
+        self.optimizer = MLE_results.optimizer
 
         # confidence interval estimates of parameters
         Z = -ss.norm.ppf((1 - CI) / 2)
@@ -8868,23 +9578,48 @@ class Fit_Normal_Power_Exponential:
             np.array(tuple(right_censored_stress_1)),
             np.array(tuple(right_censored_stress_2)),
         )
-        covariance_matrix = np.linalg.inv(hessian_matrix)
-        self.a_SE = abs(covariance_matrix[0][0]) ** 0.5
-        self.c_SE = abs(covariance_matrix[1][1]) ** 0.5
-        self.n_SE = abs(covariance_matrix[2][2]) ** 0.5
-        self.sigma_SE = abs(covariance_matrix[3][3]) ** 0.5
-        # a can be positive or negative
-        self.a_upper = self.a + (Z * self.a_SE)
-        self.a_lower = self.a + (-Z * self.a_SE)
-        # c is strictly positive
-        self.c_upper = self.c * (np.exp(Z * (self.c_SE / self.c)))
-        self.c_lower = self.c * (np.exp(-Z * (self.c_SE / self.c)))
-        # n can be positive or negative
-        self.n_upper = self.n + (Z * self.n_SE)
-        self.n_lower = self.n + (-Z * self.n_SE)
-        # sigma is strictly positive
-        self.sigma_upper = self.sigma * (np.exp(Z * (self.sigma_SE / self.sigma)))
-        self.sigma_lower = self.sigma * (np.exp(-Z * (self.sigma_SE / self.sigma)))
+        try:
+            covariance_matrix = np.linalg.inv(hessian_matrix)
+            self.a_SE = abs(covariance_matrix[0][0]) ** 0.5
+            self.c_SE = abs(covariance_matrix[1][1]) ** 0.5
+            self.n_SE = abs(covariance_matrix[2][2]) ** 0.5
+            self.sigma_SE = abs(covariance_matrix[3][3]) ** 0.5
+            # a can be positive or negative
+            self.a_upper = self.a + (Z * self.a_SE)
+            self.a_lower = self.a + (-Z * self.a_SE)
+            # c is strictly positive
+            self.c_upper = self.c * (np.exp(Z * (self.c_SE / self.c)))
+            self.c_lower = self.c * (np.exp(-Z * (self.c_SE / self.c)))
+            # n can be positive or negative
+            self.n_upper = self.n + (Z * self.n_SE)
+            self.n_lower = self.n + (-Z * self.n_SE)
+            # sigma is strictly positive
+            self.sigma_upper = self.sigma * (np.exp(Z * (self.sigma_SE / self.sigma)))
+            self.sigma_lower = self.sigma * (np.exp(-Z * (self.sigma_SE / self.sigma)))
+        except LinAlgError:
+            # this exception is rare but can occur with some optimizers and small data sets
+            colorprint(
+                str(
+                    "WARNING: The hessian matrix obtained using the "
+                    + self.optimizer
+                    + " optimizer is non-invertable for the Normal_Power_Exponential model.\n"
+                    "Confidence interval estimates of the parameters could not be obtained.\n"
+                    "You may want to try fitting the model using a different optimizer."
+                ),
+                text_color="red",
+            )
+            self.a_SE = 0
+            self.c_SE = 0
+            self.n_SE = 0
+            self.sigma_SE = 0
+            self.a_upper = self.a
+            self.a_lower = self.a
+            self.c_upper = self.c
+            self.c_lower = self.c
+            self.n_upper = self.n
+            self.n_lower = self.n
+            self.sigma_upper = self.sigma
+            self.sigma_lower = self.sigma
 
         # results dataframe
         results_data = {
@@ -9027,6 +9762,8 @@ class Fit_Normal_Power_Exponential:
                 underline=True,
             )
             print("Analysis method: Maximum Likelihood Estimation (MLE)")
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
             print(
                 "Failures / Right censored:",
                 str(str(len(failures)) + "/" + str(len(right_censored))),
@@ -9126,7 +9863,12 @@ class Fit_Normal_Dual_Power:
     show_probability_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     show_life_stress_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     CI - confidence interval for estimating confidence limits on parameters. Must be between 0 and 1. Default is 0.95 for 95% CI.
-    optimizer - 'TNC', 'L-BFGS-B', 'powell'. Default is 'TNC'. These are all bound constrained methods. If the bound constrained method fails, nelder-mead will be used. If nelder-mead fails the initial guess (using least squares) will be returned with a warning.
+    optimizer - The optimization algorithm used to find the solution. Must be either 'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'.
+        Specifying the optimizer will result in that optimizer being used.
+        To use all of these specify 'best' and the best result will be returned.
+        The default behaviour is to try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and 'powell') and stop once one of the optimizers finds a solution.
+        If the optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
 
     Outputs:
     c - fitted parameter from the Dual_Power model
@@ -9251,7 +9993,7 @@ class Fit_Normal_Dual_Power:
         ]  # c, m, n, sigma
 
         # fit the model using the MLE method
-        MLE_results = ALT_MLE_optimisation(
+        MLE_results = ALT_MLE_optimization(
             model="Dual_Power",
             dist="Normal",
             LL_func=LL_func,
@@ -9269,6 +10011,7 @@ class Fit_Normal_Dual_Power:
         self.n = MLE_results.n
         self.sigma = MLE_results.sigma
         self.success = MLE_results.success
+        self.optimizer = MLE_results.optimizer
 
         # confidence interval estimates of parameters
         Z = -ss.norm.ppf((1 - CI) / 2)
@@ -9282,23 +10025,48 @@ class Fit_Normal_Dual_Power:
             np.array(tuple(right_censored_stress_1)),
             np.array(tuple(right_censored_stress_2)),
         )
-        covariance_matrix = np.linalg.inv(hessian_matrix)
-        self.c_SE = abs(covariance_matrix[0][0]) ** 0.5
-        self.m_SE = abs(covariance_matrix[1][1]) ** 0.5
-        self.n_SE = abs(covariance_matrix[2][2]) ** 0.5
-        self.sigma_SE = abs(covariance_matrix[3][3]) ** 0.5
-        # c is strictly positive
-        self.c_upper = self.c * (np.exp(Z * (self.c_SE / self.c)))
-        self.c_lower = self.c * (np.exp(-Z * (self.c_SE / self.c)))
-        # m can be positive or negative
-        self.m_upper = self.m + (Z * self.m_SE)
-        self.m_lower = self.m + (-Z * self.m_SE)
-        # n can be positive or negative
-        self.n_upper = self.n + (Z * self.n_SE)
-        self.n_lower = self.n + (-Z * self.n_SE)
-        # sigma is strictly positive
-        self.sigma_upper = self.sigma * (np.exp(Z * (self.sigma_SE / self.sigma)))
-        self.sigma_lower = self.sigma * (np.exp(-Z * (self.sigma_SE / self.sigma)))
+        try:
+            covariance_matrix = np.linalg.inv(hessian_matrix)
+            self.c_SE = abs(covariance_matrix[0][0]) ** 0.5
+            self.m_SE = abs(covariance_matrix[1][1]) ** 0.5
+            self.n_SE = abs(covariance_matrix[2][2]) ** 0.5
+            self.sigma_SE = abs(covariance_matrix[3][3]) ** 0.5
+            # c is strictly positive
+            self.c_upper = self.c * (np.exp(Z * (self.c_SE / self.c)))
+            self.c_lower = self.c * (np.exp(-Z * (self.c_SE / self.c)))
+            # m can be positive or negative
+            self.m_upper = self.m + (Z * self.m_SE)
+            self.m_lower = self.m + (-Z * self.m_SE)
+            # n can be positive or negative
+            self.n_upper = self.n + (Z * self.n_SE)
+            self.n_lower = self.n + (-Z * self.n_SE)
+            # sigma is strictly positive
+            self.sigma_upper = self.sigma * (np.exp(Z * (self.sigma_SE / self.sigma)))
+            self.sigma_lower = self.sigma * (np.exp(-Z * (self.sigma_SE / self.sigma)))
+        except LinAlgError:
+            # this exception is rare but can occur with some optimizers and small data sets
+            colorprint(
+                str(
+                    "WARNING: The hessian matrix obtained using the "
+                    + self.optimizer
+                    + " optimizer is non-invertable for the Normal_Dual_Power model.\n"
+                    "Confidence interval estimates of the parameters could not be obtained.\n"
+                    "You may want to try fitting the model using a different optimizer."
+                ),
+                text_color="red",
+            )
+            self.c_SE = 0
+            self.m_SE = 0
+            self.n_SE = 0
+            self.sigma_SE = 0
+            self.c_upper = self.c
+            self.c_lower = self.c
+            self.m_upper = self.m
+            self.m_lower = self.m
+            self.n_upper = self.n
+            self.n_lower = self.n
+            self.sigma_upper = self.sigma
+            self.sigma_lower = self.sigma
 
         # results dataframe
         results_data = {
@@ -9439,6 +10207,8 @@ class Fit_Normal_Dual_Power:
                 underline=True,
             )
             print("Analysis method: Maximum Likelihood Estimation (MLE)")
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
             print(
                 "Failures / Right censored:",
                 str(str(len(failures)) + "/" + str(len(right_censored))),
@@ -9535,8 +10305,12 @@ class Fit_Exponential_Exponential:
     show_probability_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     show_life_stress_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     CI - confidence interval for estimating confidence limits on parameters. Must be between 0 and 1. Default is 0.95 for 95% CI.
-    optimizer - 'TNC', 'L-BFGS-B', 'powell'. Default is 'TNC'. These are all bound constrained methods. If the bound constrained method fails, nelder-mead will be used. If nelder-mead fails the initial guess (using least squares) will be returned with a warning.
-
+    optimizer - The optimization algorithm used to find the solution. Must be either 'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'.
+        Specifying the optimizer will result in that optimizer being used.
+        To use all of these specify 'best' and the best result will be returned.
+        The default behaviour is to try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and 'powell') and stop once one of the optimizers finds a solution.
+        If the optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
 
     Outputs:
     a - fitted parameter from the Exponential model
@@ -9635,7 +10409,7 @@ class Fit_Exponential_Exponential:
         guess = [life_stress_guess[0], life_stress_guess[1]]  # a, b
 
         # fit the model using the MLE method
-        MLE_results = ALT_MLE_optimisation(
+        MLE_results = ALT_MLE_optimization(
             model="Exponential",
             dist="Exponential",
             LL_func=LL_func,
@@ -9649,6 +10423,7 @@ class Fit_Exponential_Exponential:
         self.a = MLE_results.a
         self.b = MLE_results.b
         self.success = MLE_results.success
+        self.optimizer = MLE_results.optimizer
 
         # confidence interval estimates of parameters
         Z = -ss.norm.ppf((1 - CI) / 2)
@@ -9660,15 +10435,34 @@ class Fit_Exponential_Exponential:
             np.array(tuple(failure_stress)),
             np.array(tuple(right_censored_stress)),
         )
-        covariance_matrix = np.linalg.inv(hessian_matrix)
-        self.a_SE = abs(covariance_matrix[0][0]) ** 0.5
-        self.b_SE = abs(covariance_matrix[1][1]) ** 0.5
-        # a can be positive or negative
-        self.a_upper = self.a + (Z * self.a_SE)
-        self.a_lower = self.a + (-Z * self.a_SE)
-        # b is strictly positive
-        self.b_upper = self.b * (np.exp(Z * (self.b_SE / self.b)))
-        self.b_lower = self.b * (np.exp(-Z * (self.b_SE / self.b)))
+        try:
+            covariance_matrix = np.linalg.inv(hessian_matrix)
+            self.a_SE = abs(covariance_matrix[0][0]) ** 0.5
+            self.b_SE = abs(covariance_matrix[1][1]) ** 0.5
+            # a can be positive or negative
+            self.a_upper = self.a + (Z * self.a_SE)
+            self.a_lower = self.a + (-Z * self.a_SE)
+            # b is strictly positive
+            self.b_upper = self.b * (np.exp(Z * (self.b_SE / self.b)))
+            self.b_lower = self.b * (np.exp(-Z * (self.b_SE / self.b)))
+        except LinAlgError:
+            # this exception is rare but can occur with some optimizers and small data sets
+            colorprint(
+                str(
+                    "WARNING: The hessian matrix obtained using the "
+                    + self.optimizer
+                    + " optimizer is non-invertable for the Exponential_Exponential model.\n"
+                    "Confidence interval estimates of the parameters could not be obtained.\n"
+                    "You may want to try fitting the model using a different optimizer."
+                ),
+                text_color="red",
+            )
+            self.a_SE = 0
+            self.b_SE = 0
+            self.a_upper = self.a
+            self.a_lower = self.a
+            self.b_upper = self.b
+            self.b_lower = self.b
 
         # results dataframe
         results_data = {
@@ -9792,6 +10586,8 @@ class Fit_Exponential_Exponential:
                 underline=True,
             )
             print("Analysis method: Maximum Likelihood Estimation (MLE)")
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
             print(
                 "Failures / Right censored:",
                 str(str(len(failures)) + "/" + str(len(right_censored))),
@@ -9886,7 +10682,12 @@ class Fit_Exponential_Eyring:
     show_probability_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     show_life_stress_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     CI - confidence interval for estimating confidence limits on parameters. Must be between 0 and 1. Default is 0.95 for 95% CI.
-    optimizer - 'TNC', 'L-BFGS-B', 'powell'. Default is 'TNC'. These are all bound constrained methods. If the bound constrained method fails, nelder-mead will be used. If nelder-mead fails the initial guess (using least squares) will be returned with a warning.
+    optimizer - The optimization algorithm used to find the solution. Must be either 'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'.
+        Specifying the optimizer will result in that optimizer being used.
+        To use all of these specify 'best' and the best result will be returned.
+        The default behaviour is to try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and 'powell') and stop once one of the optimizers finds a solution.
+        If the optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
 
     Outputs:
     a - fitted parameter from the Eyring model
@@ -9985,7 +10786,7 @@ class Fit_Exponential_Eyring:
         guess = [life_stress_guess[0], life_stress_guess[1]]  # a, c
 
         # fit the model using the MLE method
-        MLE_results = ALT_MLE_optimisation(
+        MLE_results = ALT_MLE_optimization(
             model="Eyring",
             dist="Exponential",
             LL_func=LL_func,
@@ -9999,6 +10800,7 @@ class Fit_Exponential_Eyring:
         self.a = MLE_results.a
         self.c = MLE_results.c
         self.success = MLE_results.success
+        self.optimizer = MLE_results.optimizer
 
         # confidence interval estimates of parameters
         Z = -ss.norm.ppf((1 - CI) / 2)
@@ -10010,15 +10812,34 @@ class Fit_Exponential_Eyring:
             np.array(tuple(failure_stress)),
             np.array(tuple(right_censored_stress)),
         )
-        covariance_matrix = np.linalg.inv(hessian_matrix)
-        self.a_SE = abs(covariance_matrix[0][0]) ** 0.5
-        self.c_SE = abs(covariance_matrix[1][1]) ** 0.5
-        # a can be positive or negative
-        self.a_upper = self.a + (Z * self.a_SE)
-        self.a_lower = self.a + (-Z * self.a_SE)
-        # c can be positive or negative
-        self.c_upper = self.c + (Z * self.c_SE)
-        self.c_lower = self.c + (-Z * self.c_SE)
+        try:
+            covariance_matrix = np.linalg.inv(hessian_matrix)
+            self.a_SE = abs(covariance_matrix[0][0]) ** 0.5
+            self.c_SE = abs(covariance_matrix[1][1]) ** 0.5
+            # a can be positive or negative
+            self.a_upper = self.a + (Z * self.a_SE)
+            self.a_lower = self.a + (-Z * self.a_SE)
+            # c can be positive or negative
+            self.c_upper = self.c + (Z * self.c_SE)
+            self.c_lower = self.c + (-Z * self.c_SE)
+        except LinAlgError:
+            # this exception is rare but can occur with some optimizers and small data sets
+            colorprint(
+                str(
+                    "WARNING: The hessian matrix obtained using the "
+                    + self.optimizer
+                    + " optimizer is non-invertable for the Exponential_Eyring model.\n"
+                    "Confidence interval estimates of the parameters could not be obtained.\n"
+                    "You may want to try fitting the model using a different optimizer."
+                ),
+                text_color="red",
+            )
+            self.a_SE = 0
+            self.c_SE = 0
+            self.a_upper = self.a
+            self.a_lower = self.a
+            self.c_upper = self.c
+            self.c_lower = self.c
 
         # results dataframe
         results_data = {
@@ -10140,6 +10961,8 @@ class Fit_Exponential_Eyring:
                 underline=True,
             )
             print("Analysis method: Maximum Likelihood Estimation (MLE)")
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
             print(
                 "Failures / Right censored:",
                 str(str(len(failures)) + "/" + str(len(right_censored))),
@@ -10229,7 +11052,12 @@ class Fit_Exponential_Power:
     show_probability_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     show_life_stress_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     CI - confidence interval for estimating confidence limits on parameters. Must be between 0 and 1. Default is 0.95 for 95% CI.
-    optimizer - 'TNC', 'L-BFGS-B', 'powell'. Default is 'TNC'. These are all bound constrained methods. If the bound constrained method fails, nelder-mead will be used. If nelder-mead fails the initial guess (using least squares) will be returned with a warning.
+    optimizer - The optimization algorithm used to find the solution. Must be either 'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'.
+        Specifying the optimizer will result in that optimizer being used.
+        To use all of these specify 'best' and the best result will be returned.
+        The default behaviour is to try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and 'powell') and stop once one of the optimizers finds a solution.
+        If the optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
 
     Outputs:
     a - fitted parameter from the Power model
@@ -10328,7 +11156,7 @@ class Fit_Exponential_Power:
         guess = [life_stress_guess[0], life_stress_guess[1]]  # a, n
 
         # fit the model using the MLE method
-        MLE_results = ALT_MLE_optimisation(
+        MLE_results = ALT_MLE_optimization(
             model="Power",
             dist="Exponential",
             LL_func=LL_func,
@@ -10342,6 +11170,7 @@ class Fit_Exponential_Power:
         self.a = MLE_results.a
         self.n = MLE_results.n
         self.success = MLE_results.success
+        self.optimizer = MLE_results.optimizer
 
         # confidence interval estimates of parameters
         Z = -ss.norm.ppf((1 - CI) / 2)
@@ -10353,15 +11182,34 @@ class Fit_Exponential_Power:
             np.array(tuple(failure_stress)),
             np.array(tuple(right_censored_stress)),
         )
-        covariance_matrix = np.linalg.inv(hessian_matrix)
-        self.a_SE = abs(covariance_matrix[0][0]) ** 0.5
-        self.n_SE = abs(covariance_matrix[1][1]) ** 0.5
-        # a is strictly positive
-        self.a_upper = self.a * (np.exp(Z * (self.a_SE / self.a)))
-        self.a_lower = self.a * (np.exp(-Z * (self.a_SE / self.a)))
-        # n can be positive or negative
-        self.n_upper = self.n + (Z * self.n_SE)
-        self.n_lower = self.n + (-Z * self.n_SE)
+        try:
+            covariance_matrix = np.linalg.inv(hessian_matrix)
+            self.a_SE = abs(covariance_matrix[0][0]) ** 0.5
+            self.n_SE = abs(covariance_matrix[1][1]) ** 0.5
+            # a is strictly positive
+            self.a_upper = self.a * (np.exp(Z * (self.a_SE / self.a)))
+            self.a_lower = self.a * (np.exp(-Z * (self.a_SE / self.a)))
+            # n can be positive or negative
+            self.n_upper = self.n + (Z * self.n_SE)
+            self.n_lower = self.n + (-Z * self.n_SE)
+        except LinAlgError:
+            # this exception is rare but can occur with some optimizers and small data sets
+            colorprint(
+                str(
+                    "WARNING: The hessian matrix obtained using the "
+                    + self.optimizer
+                    + " optimizer is non-invertable for the Exponential_Power model.\n"
+                    "Confidence interval estimates of the parameters could not be obtained.\n"
+                    "You may want to try fitting the model using a different optimizer."
+                ),
+                text_color="red",
+            )
+            self.a_SE = 0
+            self.n_SE = 0
+            self.a_upper = self.a
+            self.a_lower = self.a
+            self.n_upper = self.n
+            self.n_lower = self.n
 
         # results dataframe
         results_data = {
@@ -10483,6 +11331,8 @@ class Fit_Exponential_Power:
                 underline=True,
             )
             print("Analysis method: Maximum Likelihood Estimation (MLE)")
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
             print(
                 "Failures / Right censored:",
                 str(str(len(failures)) + "/" + str(len(right_censored))),
@@ -10574,7 +11424,12 @@ class Fit_Exponential_Dual_Exponential:
     show_probability_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     show_life_stress_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     CI - confidence interval for estimating confidence limits on parameters. Must be between 0 and 1. Default is 0.95 for 95% CI.
-    optimizer - 'TNC', 'L-BFGS-B', 'powell'. Default is 'TNC'. These are all bound constrained methods. If the bound constrained method fails, nelder-mead will be used. If nelder-mead fails the initial guess (using least squares) will be returned with a warning.
+    optimizer - The optimization algorithm used to find the solution. Must be either 'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'.
+        Specifying the optimizer will result in that optimizer being used.
+        To use all of these specify 'best' and the best result will be returned.
+        The default behaviour is to try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and 'powell') and stop once one of the optimizers finds a solution.
+        If the optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
 
     Outputs:
     a - fitted parameter from the Dual_Exponential model
@@ -10690,7 +11545,7 @@ class Fit_Exponential_Dual_Exponential:
         ]  # a, b, c
 
         # fit the model using the MLE method
-        MLE_results = ALT_MLE_optimisation(
+        MLE_results = ALT_MLE_optimization(
             model="Dual_Exponential",
             dist="Exponential",
             LL_func=LL_func,
@@ -10707,6 +11562,7 @@ class Fit_Exponential_Dual_Exponential:
         self.b = MLE_results.b
         self.c = MLE_results.c
         self.success = MLE_results.success
+        self.optimizer = MLE_results.optimizer
 
         # confidence interval estimates of parameters
         Z = -ss.norm.ppf((1 - CI) / 2)
@@ -10720,19 +11576,41 @@ class Fit_Exponential_Dual_Exponential:
             np.array(tuple(right_censored_stress_1)),
             np.array(tuple(right_censored_stress_2)),
         )
-        covariance_matrix = np.linalg.inv(hessian_matrix)
-        self.a_SE = abs(covariance_matrix[0][0]) ** 0.5
-        self.b_SE = abs(covariance_matrix[1][1]) ** 0.5
-        self.c_SE = abs(covariance_matrix[2][2]) ** 0.5
-        # a can be positive or negative
-        self.a_upper = self.a + (Z * self.a_SE)
-        self.a_lower = self.a + (-Z * self.a_SE)
-        # b can be positive or negative
-        self.b_upper = self.b + (Z * self.b_SE)
-        self.b_lower = self.b + (-Z * self.b_SE)
-        # c is strictly positive
-        self.c_upper = self.c * (np.exp(Z * (self.c_SE / self.c)))
-        self.c_lower = self.c * (np.exp(-Z * (self.c_SE / self.c)))
+        try:
+            covariance_matrix = np.linalg.inv(hessian_matrix)
+            self.a_SE = abs(covariance_matrix[0][0]) ** 0.5
+            self.b_SE = abs(covariance_matrix[1][1]) ** 0.5
+            self.c_SE = abs(covariance_matrix[2][2]) ** 0.5
+            # a can be positive or negative
+            self.a_upper = self.a + (Z * self.a_SE)
+            self.a_lower = self.a + (-Z * self.a_SE)
+            # b can be positive or negative
+            self.b_upper = self.b + (Z * self.b_SE)
+            self.b_lower = self.b + (-Z * self.b_SE)
+            # c is strictly positive
+            self.c_upper = self.c * (np.exp(Z * (self.c_SE / self.c)))
+            self.c_lower = self.c * (np.exp(-Z * (self.c_SE / self.c)))
+        except LinAlgError:
+            # this exception is rare but can occur with some optimizers and small data sets
+            colorprint(
+                str(
+                    "WARNING: The hessian matrix obtained using the "
+                    + self.optimizer
+                    + " optimizer is non-invertable for the Exponential_Dual_Exponential model.\n"
+                    "Confidence interval estimates of the parameters could not be obtained.\n"
+                    "You may want to try fitting the model using a different optimizer."
+                ),
+                text_color="red",
+            )
+            self.a_SE = 0
+            self.b_SE = 0
+            self.c_SE = 0
+            self.a_upper = self.a
+            self.a_lower = self.a
+            self.b_upper = self.b
+            self.b_lower = self.b
+            self.c_upper = self.c
+            self.c_lower = self.c
 
         # results dataframe
         results_data = {
@@ -10875,6 +11753,8 @@ class Fit_Exponential_Dual_Exponential:
                 underline=True,
             )
             print("Analysis method: Maximum Likelihood Estimation (MLE)")
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
             print(
                 "Failures / Right censored:",
                 str(str(len(failures)) + "/" + str(len(right_censored))),
@@ -10973,7 +11853,12 @@ class Fit_Exponential_Power_Exponential:
     show_probability_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     show_life_stress_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     CI - confidence interval for estimating confidence limits on parameters. Must be between 0 and 1. Default is 0.95 for 95% CI.
-    optimizer - 'TNC', 'L-BFGS-B', 'powell'. Default is 'TNC'. These are all bound constrained methods. If the bound constrained method fails, nelder-mead will be used. If nelder-mead fails the initial guess (using least squares) will be returned with a warning.
+    optimizer - The optimization algorithm used to find the solution. Must be either 'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'.
+        Specifying the optimizer will result in that optimizer being used.
+        To use all of these specify 'best' and the best result will be returned.
+        The default behaviour is to try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and 'powell') and stop once one of the optimizers finds a solution.
+        If the optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
 
     Outputs:
     a - fitted parameter from the Power_Exponential model
@@ -11089,7 +11974,7 @@ class Fit_Exponential_Power_Exponential:
         ]  # a, c, n
 
         # fit the model using the MLE method
-        MLE_results = ALT_MLE_optimisation(
+        MLE_results = ALT_MLE_optimization(
             model="Power_Exponential",
             dist="Exponential",
             LL_func=LL_func,
@@ -11106,6 +11991,7 @@ class Fit_Exponential_Power_Exponential:
         self.c = MLE_results.c
         self.n = MLE_results.n
         self.success = MLE_results.success
+        self.optimizer = MLE_results.optimizer
 
         # confidence interval estimates of parameters
         Z = -ss.norm.ppf((1 - CI) / 2)
@@ -11119,19 +12005,41 @@ class Fit_Exponential_Power_Exponential:
             np.array(tuple(right_censored_stress_1)),
             np.array(tuple(right_censored_stress_2)),
         )
-        covariance_matrix = np.linalg.inv(hessian_matrix)
-        self.a_SE = abs(covariance_matrix[0][0]) ** 0.5
-        self.c_SE = abs(covariance_matrix[1][1]) ** 0.5
-        self.n_SE = abs(covariance_matrix[2][2]) ** 0.5
-        # a can be positive or negative
-        self.a_upper = self.a + (Z * self.a_SE)
-        self.a_lower = self.a + (-Z * self.a_SE)
-        # c is strictly positive
-        self.c_upper = self.c * (np.exp(Z * (self.c_SE / self.c)))
-        self.c_lower = self.c * (np.exp(-Z * (self.c_SE / self.c)))
-        # n can be positive or negative
-        self.n_upper = self.n + (Z * self.n_SE)
-        self.n_lower = self.n + (-Z * self.n_SE)
+        try:
+            covariance_matrix = np.linalg.inv(hessian_matrix)
+            self.a_SE = abs(covariance_matrix[0][0]) ** 0.5
+            self.c_SE = abs(covariance_matrix[1][1]) ** 0.5
+            self.n_SE = abs(covariance_matrix[2][2]) ** 0.5
+            # a can be positive or negative
+            self.a_upper = self.a + (Z * self.a_SE)
+            self.a_lower = self.a + (-Z * self.a_SE)
+            # c is strictly positive
+            self.c_upper = self.c * (np.exp(Z * (self.c_SE / self.c)))
+            self.c_lower = self.c * (np.exp(-Z * (self.c_SE / self.c)))
+            # n can be positive or negative
+            self.n_upper = self.n + (Z * self.n_SE)
+            self.n_lower = self.n + (-Z * self.n_SE)
+        except LinAlgError:
+            # this exception is rare but can occur with some optimizers and small data sets
+            colorprint(
+                str(
+                    "WARNING: The hessian matrix obtained using the "
+                    + self.optimizer
+                    + " optimizer is non-invertable for the Exponential_Power_Exponential model.\n"
+                    "Confidence interval estimates of the parameters could not be obtained.\n"
+                    "You may want to try fitting the model using a different optimizer."
+                ),
+                text_color="red",
+            )
+            self.a_SE = 0
+            self.c_SE = 0
+            self.n_SE = 0
+            self.a_upper = self.a
+            self.a_lower = self.a
+            self.c_upper = self.c
+            self.c_lower = self.c
+            self.n_upper = self.n
+            self.n_lower = self.n
 
         # results dataframe
         results_data = {
@@ -11274,6 +12182,8 @@ class Fit_Exponential_Power_Exponential:
                 underline=True,
             )
             print("Analysis method: Maximum Likelihood Estimation (MLE)")
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
             print(
                 "Failures / Right censored:",
                 str(str(len(failures)) + "/" + str(len(right_censored))),
@@ -11371,7 +12281,12 @@ class Fit_Exponential_Dual_Power:
     show_probability_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     show_life_stress_plot - True/False/axes. Default is True. If an axes object is passed it will be used.
     CI - confidence interval for estimating confidence limits on parameters. Must be between 0 and 1. Default is 0.95 for 95% CI.
-    optimizer - 'TNC', 'L-BFGS-B', 'powell'. Default is 'TNC'. These are all bound constrained methods. If the bound constrained method fails, nelder-mead will be used. If nelder-mead fails the initial guess (using least squares) will be returned with a warning.
+    optimizer - The optimization algorithm used to find the solution. Must be either 'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'.
+        Specifying the optimizer will result in that optimizer being used.
+        To use all of these specify 'best' and the best result will be returned.
+        The default behaviour is to try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and 'powell') and stop once one of the optimizers finds a solution.
+        If the optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
 
     Outputs:
     c - fitted parameter from the Dual_Power model
@@ -11487,7 +12402,7 @@ class Fit_Exponential_Dual_Power:
         ]  # c, m, n
 
         # fit the model using the MLE method
-        MLE_results = ALT_MLE_optimisation(
+        MLE_results = ALT_MLE_optimization(
             model="Dual_Power",
             dist="Exponential",
             LL_func=LL_func,
@@ -11504,6 +12419,7 @@ class Fit_Exponential_Dual_Power:
         self.m = MLE_results.m
         self.n = MLE_results.n
         self.success = MLE_results.success
+        self.optimizer = MLE_results.optimizer
 
         # confidence interval estimates of parameters
         Z = -ss.norm.ppf((1 - CI) / 2)
@@ -11517,19 +12433,41 @@ class Fit_Exponential_Dual_Power:
             np.array(tuple(right_censored_stress_1)),
             np.array(tuple(right_censored_stress_2)),
         )
-        covariance_matrix = np.linalg.inv(hessian_matrix)
-        self.c_SE = abs(covariance_matrix[0][0]) ** 0.5
-        self.m_SE = abs(covariance_matrix[1][1]) ** 0.5
-        self.n_SE = abs(covariance_matrix[2][2]) ** 0.5
-        # c is strictly positive
-        self.c_upper = self.c * (np.exp(Z * (self.c_SE / self.c)))
-        self.c_lower = self.c * (np.exp(-Z * (self.c_SE / self.c)))
-        # m can be positive or negative
-        self.m_upper = self.m + (Z * self.m_SE)
-        self.m_lower = self.m + (-Z * self.m_SE)
-        # n can be positive or negative
-        self.n_upper = self.n + (Z * self.n_SE)
-        self.n_lower = self.n + (-Z * self.n_SE)
+        try:
+            covariance_matrix = np.linalg.inv(hessian_matrix)
+            self.c_SE = abs(covariance_matrix[0][0]) ** 0.5
+            self.m_SE = abs(covariance_matrix[1][1]) ** 0.5
+            self.n_SE = abs(covariance_matrix[2][2]) ** 0.5
+            # c is strictly positive
+            self.c_upper = self.c * (np.exp(Z * (self.c_SE / self.c)))
+            self.c_lower = self.c * (np.exp(-Z * (self.c_SE / self.c)))
+            # m can be positive or negative
+            self.m_upper = self.m + (Z * self.m_SE)
+            self.m_lower = self.m + (-Z * self.m_SE)
+            # n can be positive or negative
+            self.n_upper = self.n + (Z * self.n_SE)
+            self.n_lower = self.n + (-Z * self.n_SE)
+        except LinAlgError:
+            # this exception is rare but can occur with some optimizers and small data sets
+            colorprint(
+                str(
+                    "WARNING: The hessian matrix obtained using the "
+                    + self.optimizer
+                    + " optimizer is non-invertable for the Exponential_Dual_Power model.\n"
+                    "Confidence interval estimates of the parameters could not be obtained.\n"
+                    "You may want to try fitting the model using a different optimizer."
+                ),
+                text_color="red",
+            )
+            self.c_SE = 0
+            self.m_SE = 0
+            self.n_SE = 0
+            self.c_upper = self.c
+            self.c_lower = self.c
+            self.m_upper = self.m
+            self.m_lower = self.m
+            self.n_upper = self.n
+            self.n_lower = self.n
 
         # results dataframe
         results_data = {
@@ -11672,6 +12610,8 @@ class Fit_Exponential_Dual_Power:
                 underline=True,
             )
             print("Analysis method: Maximum Likelihood Estimation (MLE)")
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
             print(
                 "Failures / Right censored:",
                 str(str(len(failures)) + "/" + str(len(right_censored))),

@@ -6,24 +6,37 @@ Functions have been placed here as to declutter the dropdown lists of your IDE a
 It is not expected that users will be using any utils directly.
 
 Included functions are:
-round_to_decimals - applies different rounding rules to numbers above and below 1 so that small numbers do not get rounded to 0.
-transform_spaced - Creates linearly spaced array (in transform space) based on a specified transform. This is like np.logspace but it can make an array that is weibull spaced, normal spaced, etc.
+ALT_MLE_optimization - performs optimization for the ALT_Fitters
+ALT_fitters_input_checking - performs input checking for the ALT_Fitters
+ALT_least_squares - least squares estimation for ALT_Fitters
+ALT_prob_plot - probability plotting for ALT_Fitters
+LS_optimization - least squares optimization for Fitters
+MLE_optimization - maximum likelihood estimation optimization for Fitters
+anderson_darling - calculated the anderson darling (AD) goodness of fit statistic
 axes_transforms - Custom scale functions used in Probability_plotting
-get_axes_limits - gets the current axes limits
-restore_axes_limits - restores the axes limits based on values from get_axes_limits()
+clean_CI_arrays - cleans the CI arrays of nan and illegal values
+colorprint - prints to the console in color, bold, italic, and underline
+distribution_confidence_intervals - calculates and plots the confidence intervals for the distributions
+fill_no_autoscale - creates a shaded region without adding it to the global list of objects to consider when autoscale is calculated
+fitters_input_checking - error checking and default values for all the fitters
 generate_X_array - generates the X values for all distributions
-zeroise_below_gamma - sets all y values to zero when x < gamma. Used when the HF and CHF equations are specified
-xy_transform - provides conversions between spatial (-inf,inf) and axes coordinates (0,1).
+get_axes_limits - gets the current axes limits
+least_squares - provides parameter estimates for distributions using the method of least squares. Used extensively by Fitters.
+life_stress_plot - generates the life stress plot for ALT_Fitters
+line_no_autoscale - creates a line without adding it to the global list of objects to consider when autoscale is calculated
+linear_regression - given x and y data it will return slope and intercept of line of best fit. Includes options to specify slope or intercept.
+make_fitted_dist_params_for_ALT_probplots - creates a class structure for the ALT probability plots to give to Probability_plotting
+no_reverse - corrects for reversals in confidence intervals
 probability_plot_xylims - sets the x and y limits on probability plots
 probability_plot_xyticks - sets the x and y ticks on probability plots
-anderson_darling - calculates the Anderson-Darling goodness of fit statistic
-colorprint - prints to the console in color, bold, italic, and underline
-fitters_input_checking - error checking and default values for all the fitters
-fill_no_autoscale - creates a shaded region without adding it to the global list of objects to consider when autoscale is calculated
-line_no_autoscale - creates a line without adding it to the global list of objects to consider when autoscale is calculated
-distribution_confidence_intervals - calculated and plots the confidence intervals for the distributions
-linear_regression - given x and y data it will return slope and intercept of line of best fit. Includes options to specify slope or intercept.
-least_squares - provides parameter estimates for distributions using the method of least squares. Used extensively by Fitters.
+removeNaNs - removes nan
+restore_axes_limits - restores the axes limits based on values from get_axes_limits()
+round_to_decimals - applies different rounding rules to numbers above and below 1 so that small numbers do not get rounded to 0.
+transform_spaced - Creates linearly spaced array (in transform space) based on a specified transform. This is like np.logspace but it can make an array that is weibull spaced, normal spaced, etc.
+validate_CI_params - checks that the confidence intervals have all the right parameters to be generated
+write_df_to_xlsx - converts a dataframe to an xlsx file
+xy_transform - provides conversions between spatial (-inf,inf) and axes coordinates (0,1).
+zeroise_below_gamma - sets all y values to zero when x < gamma. Used when the HF and CHF equations are specified
 """
 
 import numpy as np
@@ -31,7 +44,7 @@ import scipy.stats as ss
 import matplotlib.pyplot as plt
 from matplotlib.axes import SubplotBase
 from matplotlib.collections import PolyCollection, LineCollection
-from matplotlib import ticker, gridspec, colors
+from matplotlib import ticker, colors
 from autograd import jacobian as jac
 from autograd_gamma import gammainccinv as agammainccinv
 from autograd_gamma import gammaincc as agammaincc
@@ -306,6 +319,7 @@ def restore_axes_limits(limits, dist, func, X, Y, xvals=None, xmin=None, xmax=No
             elif dist.name == "Beta":
                 xlim_lower = 0
             elif dist.name in ["Mixture", "Competing risks"]:
+                # DSZI not required here as limits are same as base distribution
                 xlim_lower = min(X)
             else:
                 raise ValueError("Unrecognised distribution name")
@@ -744,11 +758,15 @@ def probability_plot_xylims(
     x = x[np.isfinite(x)]
     y = np.asarray(y)
     y = y[np.isfinite(y)]
+    min_x = min(x)
+    max_x = max(x)
+    min_y = min(y)
+    max_y = max(y)
 
     # x limits
     if dist in ["weibull", "lognormal", "loglogistic"]:
-        min_x_log = np.log10(min(x))
-        max_x_log = np.log10(max(x))
+        min_x_log = np.log10(min_x)
+        max_x_log = np.log10(max_x)
         dx_log = max_x_log - min_x_log
         xlim_lower = 10 ** (min_x_log - dx_log * spacing)
         xlim_upper = 10 ** (max_x_log + dx_log * spacing)
@@ -756,8 +774,6 @@ def probability_plot_xylims(
             xlim_lower = 10 ** (np.log10(xlim_lower) - 10 * spacing)
             xlim_upper = 10 ** (np.log10(xlim_upper) + 10 * spacing)
     elif dist in ["normal", "gamma", "exponential", "beta", "gumbel"]:
-        min_x = min(x)
-        max_x = max(x)
         dx = max_x - min_x
         xlim_lower = min_x - dx * spacing
         xlim_upper = max_x + dx * spacing
@@ -768,24 +784,25 @@ def probability_plot_xylims(
         raise ValueError("dist is unrecognised")
     if xlim_lower < 0 and dist not in ["normal", "gumbel"]:
         xlim_lower = 0
+    # set xlims
     plt.xlim(xlim_lower, xlim_upper)
 
     # y limits
     if dist == "weibull":
-        min_y_tfm = axes_transforms.weibull_forward(min(y))
-        max_y_tfm = axes_transforms.weibull_forward(max(y))
+        min_y_tfm = axes_transforms.weibull_forward(min_y)
+        max_y_tfm = axes_transforms.weibull_forward(max_y)
         dy_tfm = max_y_tfm - min_y_tfm
         ylim_lower = axes_transforms.weibull_inverse(min_y_tfm - dy_tfm * spacing)
         ylim_upper = axes_transforms.weibull_inverse(max_y_tfm + dy_tfm * spacing)
     if dist == "exponential":
-        min_y_tfm = axes_transforms.exponential_forward(min(y))
-        max_y_tfm = axes_transforms.exponential_forward(max(y))
+        min_y_tfm = axes_transforms.exponential_forward(min_y)
+        max_y_tfm = axes_transforms.exponential_forward(max_y)
         dy_tfm = max_y_tfm - min_y_tfm
         ylim_lower = axes_transforms.exponential_inverse(min_y_tfm - dy_tfm * spacing)
         ylim_upper = axes_transforms.exponential_inverse(max_y_tfm + dy_tfm * spacing)
     elif dist == "gamma":
-        min_y_tfm = axes_transforms.gamma_forward(min(y), gamma_beta)
-        max_y_tfm = axes_transforms.gamma_forward(max(y), gamma_beta)
+        min_y_tfm = axes_transforms.gamma_forward(min_y, gamma_beta)
+        max_y_tfm = axes_transforms.gamma_forward(max_y, gamma_beta)
         dy_tfm = max_y_tfm - min_y_tfm
         ylim_lower = axes_transforms.gamma_inverse(
             min_y_tfm - dy_tfm * spacing, gamma_beta
@@ -794,20 +811,20 @@ def probability_plot_xylims(
             max_y_tfm + dy_tfm * spacing, gamma_beta
         )
     elif dist in ["normal", "lognormal"]:
-        min_y_tfm = axes_transforms.normal_forward(min(y))
-        max_y_tfm = axes_transforms.normal_forward(max(y))
+        min_y_tfm = axes_transforms.normal_forward(min_y)
+        max_y_tfm = axes_transforms.normal_forward(max_y)
         dy_tfm = max_y_tfm - min_y_tfm
         ylim_lower = axes_transforms.normal_inverse(min_y_tfm - dy_tfm * spacing)
         ylim_upper = axes_transforms.normal_inverse(max_y_tfm + dy_tfm * spacing)
     elif dist == "gumbel":
-        min_y_tfm = axes_transforms.gumbel_forward(min(y))
-        max_y_tfm = axes_transforms.gumbel_forward(max(y))
+        min_y_tfm = axes_transforms.gumbel_forward(min_y)
+        max_y_tfm = axes_transforms.gumbel_forward(max_y)
         dy_tfm = max_y_tfm - min_y_tfm
         ylim_lower = axes_transforms.gumbel_inverse(min_y_tfm - dy_tfm * spacing)
         ylim_upper = axes_transforms.gumbel_inverse(max_y_tfm + dy_tfm * spacing)
     elif dist == "beta":
-        min_y_tfm = axes_transforms.beta_forward(min(y), beta_alpha, beta_beta)
-        max_y_tfm = axes_transforms.beta_forward(max(y), beta_alpha, beta_beta)
+        min_y_tfm = axes_transforms.beta_forward(min_y, beta_alpha, beta_beta)
+        max_y_tfm = axes_transforms.beta_forward(max_y, beta_alpha, beta_beta)
         dy_tfm = max_y_tfm - min_y_tfm
         ylim_lower = axes_transforms.beta_inverse(
             min_y_tfm - dy_tfm * spacing, beta_alpha, beta_beta
@@ -816,8 +833,8 @@ def probability_plot_xylims(
             max_y_tfm + dy_tfm * spacing, beta_alpha, beta_beta
         )
     elif dist == "loglogistic":
-        min_y_tfm = axes_transforms.loglogistic_forward(min(y))
-        max_y_tfm = axes_transforms.loglogistic_forward(max(y))
+        min_y_tfm = axes_transforms.loglogistic_forward(min_y)
+        max_y_tfm = axes_transforms.loglogistic_forward(max_y)
         dy_tfm = max_y_tfm - min_y_tfm
         ylim_lower = axes_transforms.loglogistic_inverse(min_y_tfm - dy_tfm * spacing)
         ylim_upper = axes_transforms.loglogistic_inverse(max_y_tfm + dy_tfm * spacing)
@@ -825,6 +842,19 @@ def probability_plot_xylims(
         dx = min(1 - ylim_upper, ylim_upper - 1)
         ylim_upper = ylim_upper - spacing * dx
         ylim_lower = ylim_lower + spacing * dx
+
+    # correction for the case where ylims are is 0 or 1
+    if ylim_lower == 0:
+        if min_y > 0:
+            ylim_lower = min_y
+        else:
+            ylim_lower = 0.00001
+    if ylim_upper == 1:
+        if max_y < 1:
+            ylim_upper = max_y
+        else:
+            ylim_upper = 0.99999
+    # set ylims
     plt.ylim(ylim_lower, ylim_upper)
 
 
@@ -1194,6 +1224,9 @@ class fitters_input_checking:
             "Beta_2P",
             "Weibull_Mixture",
             "Weibull_CR",
+            "Weibull_DSZI",
+            "Weibull_DS",
+            "Weibull_ZI",
         ]:
             raise ValueError(
                 "incorrect dist specified. Use the correct name. eg. Weibull_2P"
@@ -1233,7 +1266,7 @@ class fitters_input_checking:
             if len(failures) != len(f0):
                 if dist == "Everything":
                     colorprint(
-                        "WARNING: failures contained zeros. These have been removed to enable fitting of all distributions.",
+                        "WARNING: failures contained zeros. These have been removed to enable fitting of all distributions. Consider using Fit_Weibull_ZI or Fit_Weibull_DSZI if you need to include the zero inflation in the models.",
                         text_color="red",
                     )
                 else:
@@ -1241,7 +1274,7 @@ class fitters_input_checking:
                         str(
                             "WARNING: failures contained zeros. These have been removed to enable fitting of the "
                             + dist
-                            + " distribution."
+                            + " distribution. Consider using Fit_Weibull_ZI or Fit_Weibull_DSZI if you need to include the zero inflation in the model."
                         ),
                         text_color="red",
                     )
@@ -1268,7 +1301,7 @@ class fitters_input_checking:
                 failures = f1[f1 != 0]
                 if len(failures) != len(f1):
                     colorprint(
-                        "WARNING: failures contained ones. These have been removed to enable fitting of the Beta_2P distribution.",
+                        "WARNING: failures contained ones. These have been removed to enable fitting of the Beta_2P distribution. Consider using Fit_Weibull_ZI or Fit_Weibull_DSZI if you need to include the zero inflation in the model.",
                         text_color="red",
                     )
                 if len(right_censored) != len(rc1):
@@ -1288,21 +1321,32 @@ class fitters_input_checking:
             )
 
         # error checking for optimizer
-        if optimizer is None:
-            frac_cens = len(right_censored) / (len(failures) + len(right_censored))
-            if frac_cens > 0.97:
-                optimizer = "TNC"  # default optimizer above 97% right censored data
-            else:
-                optimizer = (
-                    "L-BFGS-B"  # default optimizer below 97% right censored data
+        if optimizer is not None:
+            if type(optimizer) is not str:
+                raise ValueError(
+                    'optimizer must be either "TNC", "L-BFGS-B", "nelder-mead", "powell", "best" or None. For more detail see the documentation: https://reliability.readthedocs.io/en/latest/Optimizers.html'
                 )
-        elif optimizer.upper() not in ["L-BFGS-B", "TNC", "POWELL"]:
-            raise ValueError(
-                'optimizer must be either "L-BFGS-B", "TNC", or "powell". Default is "L-BFGS-B" below 97% censored data and "TNC" above 97% censored data.'
-            )
+            if optimizer.upper() == "TNC":
+                optimizer = "TNC"
+            elif optimizer.upper() == "POWELL":
+                optimizer = "powell"
+            elif optimizer.upper() in ["L-BFGS-B", "LBFGSB"]:
+                optimizer = "L-BFGS-B"
+            elif optimizer.upper() in ["NELDER-MEAD", "NELDERMEAD", "NM"]:
+                optimizer = "nelder-mead"
+            elif optimizer.upper() in ["ALL", "BEST"]:
+                optimizer = "best"
+            else:
+                raise ValueError(
+                    'optimizer must be either "TNC", "L-BFGS-B", "nelder-mead", "powell", "best" or None. For more detail see the documentation: https://reliability.readthedocs.io/en/latest/Optimizers.html'
+                )
 
         # error checking for method
         if method is not None:
+            if type(method) is not str:
+                raise ValueError(
+                    'method must be either "MLE" (maximum likelihood estimation), "LS" (least squares), "RRX" (rank regression on X), or "RRY" (rank regression on Y).'
+                )
             if method.upper() == "RRX":
                 method = "RRX"
             elif method.upper() == "RRY":
@@ -1364,6 +1408,9 @@ class fitters_input_checking:
             "Beta_2P",
             "Exponential_2P",
             "Everything",
+            "Weibull_ZI",
+            "Weibull_DS",
+            "Weibull_DSZI",
         ]:
             if force_sigma is None and force_beta is None:
                 min_failures = 2
@@ -1456,9 +1503,9 @@ class ALT_fitters_input_checking:
         optimizer=None,
     ):
 
-        if dist not in ["Exponential", "Weibull", "Lognormal", "Normal"]:
+        if dist not in ["Exponential", "Weibull", "Lognormal", "Normal", "Everything"]:
             raise ValueError(
-                "dist must be one of Exponential, Weibull, Lognormal, Normal."
+                "dist must be one of Exponential, Weibull, Lognormal, Normal, Everything."
             )
         if life_stress_model not in [
             "Exponential",
@@ -1467,11 +1514,24 @@ class ALT_fitters_input_checking:
             "Dual_Exponential",
             "Power_Exponential",
             "Dual_Power",
+            "Everything",
         ]:
             raise ValueError(
-                "life_stess_model must be one of Exponential, Eyring, Power, Dual_Exponential, Power_Exponential, Dual_Power."
+                "life_stess_model must be one of Exponential, Eyring, Power, Dual_Exponential, Power_Exponential, Dual_Power, Everything."
             )
-        if life_stress_model in ["Dual_Exponential", "Power_Exponential", "Dual_Power"]:
+
+        if life_stress_model == "Everything":
+            if failure_stress_2 is not None:
+                is_dual_stress = True
+                min_failures_reqd = 4
+            else:
+                is_dual_stress = False
+                min_failures_reqd = 3
+        elif life_stress_model in [
+            "Dual_Exponential",
+            "Power_Exponential",
+            "Dual_Power",
+        ]:
             is_dual_stress = True
             min_failures_reqd = 4
         else:
@@ -1609,9 +1669,23 @@ class ALT_fitters_input_checking:
 
         # error checking for optimizer
         if optimizer is not None:
-            if optimizer.upper() not in ["L-BFGS-B", "TNC", "POWELL"]:
+            if type(optimizer) is not str:
                 raise ValueError(
-                    'optimizer must be either "L-BFGS-B", "TNC", or "powell"'
+                    'optimizer must be either "TNC", "L-BFGS-B", "nelder-mead", "powell", "best" or None. For more detail see the documentation: https://reliability.readthedocs.io/en/latest/Optimizers.html'
+                )
+            if optimizer.upper() == "TNC":
+                optimizer = "TNC"
+            elif optimizer.upper() == "POWELL":
+                optimizer = "powell"
+            elif optimizer.upper() in ["L-BFGS-B", "LBFGSB"]:
+                optimizer = "L-BFGS-B"
+            elif optimizer.upper() in ["NELDER-MEAD", "NELDERMEAD", "NM"]:
+                optimizer = "nelder-mead"
+            elif optimizer.upper() in ["ALL", "BEST"]:
+                optimizer = "best"
+            else:
+                raise ValueError(
+                    'optimizer must be either "TNC", "L-BFGS-B", "nelder-mead", "powell", "best" or None. For more detail see the documentation: https://reliability.readthedocs.io/en/latest/Optimizers.html'
                 )
 
         # check the number of unique stresses
@@ -1644,17 +1718,26 @@ class ALT_fitters_input_checking:
             for i, failure_group in enumerate(failure_groups):
                 total_unique_failures += len(np.unique(failure_group))
             if total_unique_failures < min_failures_reqd:
-                raise ValueError(
-                    str(
-                        "There must be at least "
-                        + str(min_failures_reqd)
-                        + " unique failures for the "
-                        + dist
-                        + "-"
-                        + life_stress_model
-                        + " model to be fitted."
+                if life_stress_model == "Everything":
+                    raise ValueError(
+                        str(
+                            "There must be at least "
+                            + str(min_failures_reqd)
+                            + " unique failures for all ALT models to be fitted."
+                        )
                     )
-                )
+                else:
+                    raise ValueError(
+                        str(
+                            "There must be at least "
+                            + str(min_failures_reqd)
+                            + " unique failures for the "
+                            + dist
+                            + "-"
+                            + life_stress_model
+                            + " model to be fitted."
+                        )
+                    )
 
             if len(right_censored) > 0:
                 right_censored_df_ungrouped = pd.DataFrame(
@@ -1715,7 +1798,16 @@ class ALT_fitters_input_checking:
             total_unique_failures = 0
             for i, failure_group in enumerate(failure_groups):
                 total_unique_failures += len(np.unique(failure_group))
-                if total_unique_failures < min_failures_reqd:
+            if total_unique_failures < min_failures_reqd:
+                if life_stress_model == "Everything":
+                    raise ValueError(
+                        str(
+                            "There must be at least "
+                            + str(min_failures_reqd)
+                            + " unique failures for all ALT models to be fitted."
+                        )
+                    )
+                else:
                     raise ValueError(
                         str(
                             "There must be at least "
@@ -1784,6 +1876,10 @@ class ALT_fitters_input_checking:
             if type(use_level_stress) not in [list, np.ndarray]:
                 raise ValueError(
                     "use_level_stress must be an array or list of the use level stresses. eg. use_level_stress = [stress_1, stress_2]."
+                )
+            if len(use_level_stress) != 2:
+                raise ValueError(
+                    "use_level_stress must be an array or list of length 2 with the use level stresses. eg. use_level_stress = [stress_1, stress_2]."
                 )
             use_level_stress = np.asarray(use_level_stress)
 
@@ -1880,7 +1976,7 @@ def clean_CI_arrays(xlower, xupper, ylower, yupper, plot_type="CDF"):
             ylower_out3 = np.append(ylower_out3, ylower_out2[i])
             yupper_out3 = np.append(yupper_out3, yupper_out2[i])
 
-    # final error check for lengths matching and there still being at lease 2 elements remaning
+    # final error check for lengths matching and there still being at least 2 elements remaining
     if (
         len(xlower_out3) != len(xupper_out3)
         or len(xlower_out3) != len(yupper_out3)
@@ -1903,6 +1999,12 @@ def fill_no_autoscale(xlower, xupper, ylower, yupper, **kwargs):
     # generate the polygon
     xstack = np.hstack([xlower, xupper[::-1]])
     ystack = np.hstack([ylower, yupper[::-1]])
+
+    # this corrects illegal yvalues in the probability plot
+    if plt.gca().get_yscale() == "function":
+        ystack[np.where(ystack >= 1)] = 0.9999999
+        ystack[np.where(ystack <= 0)] = 0.0000001
+
     polygon = np.column_stack([xstack, ystack])
     # this is equivalent to fill as it makes a polygon
     col = PolyCollection([polygon], **kwargs)
@@ -2034,8 +2136,9 @@ class distribution_confidence_intervals:
                 xlower=t, xupper=t, ylower=Y_lower, yupper=Y_upper, plot_type=func
             )
             # artificially correct for any reversals
-            Y_lower = no_reverse(Y_lower, CI_type=None, plot_type=func)
-            Y_upper = no_reverse(Y_upper, CI_type=None, plot_type=func)
+            if len(Y_lower) > 2 and len(Y_upper) > 2:
+                Y_lower = no_reverse(Y_lower, CI_type=None, plot_type=func)
+                Y_upper = no_reverse(Y_upper, CI_type=None, plot_type=func)
 
             if func == "CDF":
                 yy_upper = 1 - Y_upper
@@ -2071,6 +2174,7 @@ class distribution_confidence_intervals:
                 )  # still need to specify color otherwise the invisible CI lines will consume default colors
                 # plt.scatter(t + self.gamma, yy_lower,color='blue',marker='.')
                 # plt.scatter(t + self.gamma, yy_upper, color='red', marker='.')
+
             elif plot_CI is None and q is not None:
                 return t_lower, t_upper
 
@@ -2190,7 +2294,7 @@ class distribution_confidence_intervals:
                     xlower=t_lower, xupper=t_upper, ylower=Y, yupper=Y, plot_type=func
                 )
                 # artificially correct for any reversals
-                if q is None:
+                if q is None and len(t_lower) > 2 and len(t_upper) > 2:
                     t_lower = no_reverse(t_lower, CI_type=CI_type, plot_type=func)
                     t_upper = no_reverse(t_upper, CI_type=CI_type, plot_type=func)
 
@@ -2247,8 +2351,9 @@ class distribution_confidence_intervals:
                     xlower=t, xupper=t, ylower=Y_lower, yupper=Y_upper, plot_type=func
                 )
                 # artificially correct for any reversals
-                Y_lower = no_reverse(Y_lower, CI_type=CI_type, plot_type=func)
-                Y_upper = no_reverse(Y_upper, CI_type=CI_type, plot_type=func)
+                if len(Y_lower) > 2 and len(Y_upper) > 2:
+                    Y_lower = no_reverse(Y_lower, CI_type=CI_type, plot_type=func)
+                    Y_upper = no_reverse(Y_upper, CI_type=CI_type, plot_type=func)
 
                 if func == "CDF":
                     yy_lower = 1 - Y_lower
@@ -2400,7 +2505,7 @@ class distribution_confidence_intervals:
                     xlower=t_lower, xupper=t_upper, ylower=Y, yupper=Y, plot_type=func
                 )
                 # artificially correct for any reversals
-                if q is None:
+                if q is None and len(t_lower) > 2 and len(t_upper) > 2:
                     t_lower = no_reverse(t_lower, CI_type=CI_type, plot_type=func)
                     t_upper = no_reverse(t_upper, CI_type=CI_type, plot_type=func)
 
@@ -2460,8 +2565,9 @@ class distribution_confidence_intervals:
                     xlower=t, xupper=t, ylower=Y_lower, yupper=Y_upper, plot_type=func
                 )
                 # artificially correct for any reversals
-                Y_lower = no_reverse(Y_lower, CI_type=CI_type, plot_type=func)
-                Y_upper = no_reverse(Y_upper, CI_type=CI_type, plot_type=func)
+                if len(Y_lower) > 2 and len(Y_upper) > 2:
+                    Y_lower = no_reverse(Y_lower, CI_type=CI_type, plot_type=func)
+                    Y_upper = no_reverse(Y_upper, CI_type=CI_type, plot_type=func)
 
                 if func == "CDF":
                     yy_lower = 1 - Y_lower
@@ -2603,7 +2709,7 @@ class distribution_confidence_intervals:
                     xlower=t_lower, xupper=t_upper, ylower=Y, yupper=Y, plot_type=func
                 )
                 # artificially correct for any reversals
-                if q is None:
+                if q is None and len(t_lower) > 2 and len(t_upper) > 2:
                     t_lower = no_reverse(t_lower, CI_type=CI_type, plot_type=func)
                     t_upper = no_reverse(t_upper, CI_type=CI_type, plot_type=func)
 
@@ -2652,8 +2758,9 @@ class distribution_confidence_intervals:
                     xlower=t, xupper=t, ylower=Y_lower, yupper=Y_upper, plot_type=func
                 )
                 # artificially correct for any reversals
-                Y_lower = no_reverse(Y_lower, CI_type=CI_type, plot_type=func)
-                Y_upper = no_reverse(Y_upper, CI_type=CI_type, plot_type=func)
+                if len(Y_lower) > 2 and len(Y_upper) > 2:
+                    Y_lower = no_reverse(Y_lower, CI_type=CI_type, plot_type=func)
+                    Y_upper = no_reverse(Y_upper, CI_type=CI_type, plot_type=func)
 
                 if func == "CDF":
                     yy_lower = 1 - Y_lower
@@ -2797,7 +2904,7 @@ class distribution_confidence_intervals:
                     xlower=t_lower, xupper=t_upper, ylower=Y, yupper=Y, plot_type=func
                 )
                 # artificially correct for any reversals
-                if q is None:
+                if q is None and len(t_lower) > 2 and len(t_upper) > 2:
                     t_lower = no_reverse(t_lower, CI_type=CI_type, plot_type=func)
                     t_upper = no_reverse(t_upper, CI_type=CI_type, plot_type=func)
 
@@ -2853,8 +2960,9 @@ class distribution_confidence_intervals:
                     xlower=t, xupper=t, ylower=Y_lower, yupper=Y_upper, plot_type=func
                 )
                 # artificially correct for any reversals
-                Y_lower = no_reverse(Y_lower, CI_type=CI_type, plot_type=func)
-                Y_upper = no_reverse(Y_upper, CI_type=CI_type, plot_type=func)
+                if len(Y_lower) > 2 and len(Y_upper) > 2:
+                    Y_lower = no_reverse(Y_lower, CI_type=CI_type, plot_type=func)
+                    Y_upper = no_reverse(Y_upper, CI_type=CI_type, plot_type=func)
 
                 if func == "CDF":
                     yy_lower = 1 - Y_lower
@@ -2999,7 +3107,7 @@ class distribution_confidence_intervals:
                     xlower=t_lower, xupper=t_upper, ylower=Y, yupper=Y, plot_type=func
                 )
                 # artificially correct for any reversals
-                if q is None:
+                if q is None and len(t_lower) > 2 and len(t_upper) > 2:
                     t_lower = no_reverse(t_lower, CI_type=CI_type, plot_type=func)
                     t_upper = no_reverse(t_upper, CI_type=CI_type, plot_type=func)
 
@@ -3057,8 +3165,9 @@ class distribution_confidence_intervals:
                     xlower=t, xupper=t, ylower=Y_lower, yupper=Y_upper, plot_type=func
                 )
                 # artificially correct for any reversals
-                Y_lower = no_reverse(Y_lower, CI_type=CI_type, plot_type=func)
-                Y_upper = no_reverse(Y_upper, CI_type=CI_type, plot_type=func)
+                if len(Y_lower) > 2 and len(Y_upper) > 2:
+                    Y_lower = no_reverse(Y_lower, CI_type=CI_type, plot_type=func)
+                    Y_upper = no_reverse(Y_upper, CI_type=CI_type, plot_type=func)
 
                 if func == "CDF":
                     yy_lower = 1 - Y_lower
@@ -3199,7 +3308,7 @@ class distribution_confidence_intervals:
                     xlower=t_lower, xupper=t_upper, ylower=Y, yupper=Y, plot_type=func
                 )
                 # artificially correct for any reversals
-                if q is None:
+                if q is None and len(t_lower) > 2 and len(t_upper) > 2:
                     t_lower = no_reverse(t_lower, CI_type=CI_type, plot_type=func)
                     t_upper = no_reverse(t_upper, CI_type=CI_type, plot_type=func)
 
@@ -3248,8 +3357,9 @@ class distribution_confidence_intervals:
                     xlower=t, xupper=t, ylower=Y_lower, yupper=Y_upper, plot_type=func
                 )
                 # artificially correct for any reversals
-                Y_lower = no_reverse(Y_lower, CI_type=CI_type, plot_type=func)
-                Y_upper = no_reverse(Y_upper, CI_type=CI_type, plot_type=func)
+                if len(Y_lower) > 2 and len(Y_upper) > 2:
+                    Y_lower = no_reverse(Y_lower, CI_type=CI_type, plot_type=func)
+                    Y_upper = no_reverse(Y_upper, CI_type=CI_type, plot_type=func)
 
                 if func == "CDF":
                     yy_lower = 1 - Y_lower
@@ -3399,7 +3509,7 @@ class distribution_confidence_intervals:
     #                 xlower=t_lower, xupper=t_upper, ylower=Y, yupper=Y, plot_type=func
     #             )
     #             # artificially correct for any reversals
-    #             if q is None:
+    #             if q is None and len(t_lower) > 2 and len(t_upper)>2:
     #                 t_lower = no_reverse(t_lower, CI_type=CI_type, plot_type=func)
     #                 t_upper = no_reverse(t_upper, CI_type=CI_type, plot_type=func)
     #
@@ -3458,8 +3568,9 @@ class distribution_confidence_intervals:
     #                 xlower=t, xupper=t, ylower=Y_lower, yupper=Y_upper, plot_type=func
     #             )
     #             # artificially correct for any reversals
-    #             Y_lower = no_reverse(Y_lower, CI_type=CI_type, plot_type=func)
-    #             Y_upper = no_reverse(Y_upper, CI_type=CI_type, plot_type=func)
+    #             if len(Y_lower) > 2 and len(Y_upper) > 2:
+    #                 Y_lower = no_reverse(Y_lower, CI_type=CI_type, plot_type=func)
+    #                 Y_upper = no_reverse(Y_upper, CI_type=CI_type, plot_type=func)
     #
     #             if func == "CDF":
     #                 yy_lower = 1 - Y_lower
@@ -3691,8 +3802,8 @@ def least_squares(dist, failures, right_censored, method="RRX", force_shape=None
                 y,
                 p0=[LS_alpha, LS_beta, gamma0],
                 bounds=curve_fit_bounds,
-                jac="cs",
-                method="dogbox",
+                jac="3-point",
+                method="trf",
                 max_nfev=300 * len(failures),
             )  # This is the non-linear least squares method. p0 is the initial guess for [alpha,beta,gamma]
             NLLS_alpha = popt[0]
@@ -3743,7 +3854,7 @@ def least_squares(dist, failures, right_censored, method="RRX", force_shape=None
                 y,
                 p0=[LS_Lambda, gamma0],
                 bounds=curve_fit_bounds,
-                jac="cs",
+                jac="3-point",
                 method="trf",
                 max_nfev=300 * len(failures),
             )
@@ -3815,6 +3926,8 @@ def least_squares(dist, failures, right_censored, method="RRX", force_shape=None
                 y,
                 p0=[np.mean(np.log(x - gamma)), np.std(np.log(x - gamma))],
                 bounds=curve_fit_bounds,
+                jac="3-point",
+                method="trf",
                 max_nfev=300 * len(failures),
             )  # This is the non-linear least squares method. p0 is the initial guess for [mu,sigma].
             NLLS_mu = popt[0]
@@ -3859,8 +3972,8 @@ def least_squares(dist, failures, right_censored, method="RRX", force_shape=None
                 y,
                 p0=[LS_alpha, LS_beta, gamma0],
                 bounds=curve_fit_bounds,
-                jac="cs",
-                method="dogbox",
+                jac="3-point",
+                method="trf",
                 max_nfev=300 * len(failures),
             )  # This is the non-linear least squares method. p0 is the initial guess for [alpha,beta,gamma].
             NLLS_alpha = popt[0]
@@ -3901,7 +4014,8 @@ def least_squares(dist, failures, right_censored, method="RRX", force_shape=None
                 y,
                 p0=[alpha_guess, beta_guess],
                 bounds=curve_fit_bounds,
-                method="dogbox",
+                jac="3-point",
+                method="trf",
                 max_nfev=300 * len(failures),
             )  # This is the non-linear least squares method. p0 is the initial guess for [alpha,beta]
             return [popt[0], popt[1]]
@@ -3951,11 +4065,12 @@ def least_squares(dist, failures, right_censored, method="RRX", force_shape=None
             )  # ([alpha_lower,beta_lower],[alpha_upper,beta_upper])
             popt, _ = curve_fit(
                 __gamma_2P_CDF,
-                x,
+                x - gamma0 * 0.98,
                 y,
                 p0=[alpha_guess, beta_guess],
                 bounds=curve_fit_bounds,
-                method="dogbox",
+                jac="3-point",
+                method="trf",
                 max_nfev=300 * len(failures),
             )  # This is the non-linear least squares method. p0 is the initial guess for [alpha,beta]
             return [popt[0], popt[1]]
@@ -3971,6 +4086,7 @@ def least_squares(dist, failures, right_censored, method="RRX", force_shape=None
                 y,
                 p0=[NLLS_alpha_2P, NLLS_beta_2P, gamma0 * 0.98],
                 bounds=curve_fit_bounds_3P,
+                jac="3-point",
                 method="trf",
                 max_nfev=300 * len(failures),
             )  # This is the non-linear least squares method. p0 is the initial guess for [alpha,beta,gamma]
@@ -4039,6 +4155,8 @@ def least_squares(dist, failures, right_censored, method="RRX", force_shape=None
                 y,
                 p0=[2, 1],
                 bounds=curve_fit_bounds,
+                jac="3-point",
+                method="trf",
                 max_nfev=300 * len(failures),
             )  # This is the non-linear least squares method. p0 is the initial guess for [alpha,beta]
             NLLS_alpha = popt[0]
@@ -4069,6 +4187,27 @@ def ALT_least_squares(model, failures, stress_1_array, stress_2_array=None):
         Dual_Power - [c,m,n]
     """
 
+    def non_invertable_handler(xx, yy, model):
+        # this performs the linear algebra to find the solution
+        # it also handles the occasional case of a non-invertable matrix
+        try:
+            # linear regression formula for RRY
+            out = np.linalg.inv(xx.T.dot(xx)).dot(xx.T).dot(yy)
+        except LinAlgError:
+            try:
+                # if the matrix is perfectly symmetrical, it becomes non-invertable
+                # in this case we introduce a small amount of noise so it can be inverted
+                # this noise doesn't affect the result much and it doesn't really matter since it is just a guess being passed to MLE for optimization
+                noise = np.random.normal(loc=0, scale=0.01, size=(3, 3))
+                out = np.linalg.inv(xx.T.dot(xx) + noise).dot(xx.T).dot(yy)
+            except LinAlgError:
+                colorprint(
+                    "WARNING: Least squares estimates failed for " + model + " model.",
+                    text_color="red",
+                )
+                out = [1, 2, 3]  # return a dummy solution for MLE to deal with
+        return out
+
     L = np.asarray(failures)
     S1 = np.asarray(stress_1_array)
     if stress_2_array is not None:
@@ -4091,7 +4230,7 @@ def ALT_least_squares(model, failures, stress_1_array, stress_2_array=None):
         yy = Z.T
         xx = np.array([np.ones_like(X), X, Y]).T
         # linear regression formula for RRY
-        solution = np.linalg.inv(xx.T.dot(xx)).dot(xx.T).dot(yy)
+        solution = non_invertable_handler(xx, yy, model)
         output = [solution[1], solution[2], np.exp(solution[0])]  # a,b,c
     elif model == "Power_Exponential":
         X = 1 / S1
@@ -4100,7 +4239,7 @@ def ALT_least_squares(model, failures, stress_1_array, stress_2_array=None):
         yy = Z.T
         xx = np.array([np.ones_like(X), X, Y]).T
         # linear regression formula for RRY
-        solution = np.linalg.inv(xx.T.dot(xx)).dot(xx.T).dot(yy)
+        solution = non_invertable_handler(xx, yy, model)
         output = [solution[1], np.exp(solution[0]), solution[2]]  # a,c,n
     elif model == "Dual_Power":
         X = np.log(S1)
@@ -4108,8 +4247,7 @@ def ALT_least_squares(model, failures, stress_1_array, stress_2_array=None):
         Z = np.log(L)
         yy = Z.T
         xx = np.array([np.ones_like(X), X, Y]).T
-        # linear regression formula for RRY
-        solution = np.linalg.inv(xx.T.dot(xx)).dot(xx.T).dot(yy)
+        solution = non_invertable_handler(xx, yy, model)
         output = [np.exp(solution[0]), solution[1], solution[2]]  # c,m,n
     else:
         raise ValueError(
@@ -4118,10 +4256,10 @@ def ALT_least_squares(model, failures, stress_1_array, stress_2_array=None):
     return output
 
 
-class LS_optimisation:
+class LS_optimization:
     """
-    Performs optimisation using least squares regression.
-    There is no actual "optimisation" done here, with the exception of checking which method (RRX or RRY) gave the better solution.
+    Performs optimization using least squares regression.
+    There is no actual "optimization" done here, with the exception of checking which method (RRX or RRY) gave the better solution.
     This function is used be each of the Fitters.
     """
 
@@ -4201,10 +4339,10 @@ class LS_optimisation:
         self.method = LS_method
 
 
-class MLE_optimisation:
+class MLE_optimization:
     """
     This function performs the heavy lifting of finding the optimal parameters using the method of maximum likelihood expectation (MLE).
-    This functions is used be each of the fitters.
+    This functions is used by each of the fitters.
     """
 
     def __init__(
@@ -4218,9 +4356,82 @@ class MLE_optimisation:
         force_shape=None,
         LL_func_force=None,
     ):
+        # this sub-function does the actual optimization. It is called each time a new optimizer is tried
+        def loglik_optimizer(
+            LL_func,
+            guess,
+            failures,
+            right_censored,
+            bounds,
+            optimizer,
+            force_shape,
+            LL_func_force,
+            func_name,
+        ):
+            delta_LL = 1
+            LL_array = [1000000]
+            runs = 0
 
+            if func_name in ["Weibull_ZI", "Weibull_DSZI"]:
+                ZI = True
+            else:
+                ZI = False
+
+            if ZI is True:  # Zero Inflated distribution (applies to ZI and DSZI)
+                args = (failures[failures == 0], failures[failures > 0], right_censored)
+            else:
+                args = (failures, right_censored)
+
+            if force_shape is None:
+                while delta_LL > 0.001 and runs < 5:
+                    # exits after LL convergence or 5 iterations
+                    runs += 1
+                    result = minimize(
+                        value_and_grad(LL_func),
+                        guess,
+                        args=args,
+                        jac=True,
+                        method=optimizer,
+                        bounds=bounds,
+                    )
+                    guess = result.x  # update the guess each iteration
+                    if ZI is True:
+                        LL2 = 2 * LL_func(
+                            guess,
+                            failures[failures == 0],
+                            failures[failures > 0],
+                            right_censored,
+                        )
+                    else:
+                        LL2 = 2 * LL_func(guess, failures, right_censored)
+                    LL_array.append(np.abs(LL2))
+                    delta_LL = abs(LL_array[-1] - LL_array[-2])
+            else:  # this will only be run for Weibull_2P, Normal_2P, and Lognormal_2P so the guess is structured with this in mind
+                bounds = [bounds[0]]
+                guess = [guess[0]]
+                while (
+                    delta_LL > 0.001 and runs < 5
+                ):  # exits after LL convergence or 5 iterations
+                    runs += 1
+                    result = minimize(
+                        value_and_grad(LL_func_force),
+                        guess,
+                        args=(failures, right_censored, force_shape),
+                        jac=True,
+                        method=optimizer,
+                        bounds=bounds,
+                    )
+                    guess = result.x
+                    LL2 = 2 * LL_func_force(
+                        guess, failures, right_censored, force_shape
+                    )
+                    LL_array.append(np.abs(LL2))
+                    delta_LL = abs(LL_array[-1] - LL_array[-2])
+                    guess = result.x  # update the guess each iteration
+            return result.success, LL_array[-1], result.x
+
+        # generate the bounds on the solution
         gamma0 = max(0, min(np.hstack([failures, right_censored])) - 0.0001)
-
         if func_name in ["Weibull_2P", "Gamma_2P", "Beta_2P", "Loglogistic_2P"]:
             bounds = [(0, None), (0, None)]
         elif func_name in ["Weibull_3P", "Gamma_3P", "Loglogistic_3P"]:
@@ -4243,58 +4454,173 @@ class MLE_optimisation:
             ]
         elif func_name == "Weibull_CR":
             bounds = [(0.0001, None), (0.0001, None), (0.0001, None), (0.0001, None)]
+        elif func_name == "Weibull_DSZI":
+            bounds = [(0.0001, None), (0.0001, None), (0.00001, 1), (0, 0.99999)]
+        elif func_name == "Weibull_DS":
+            bounds = [(0.0001, None), (0.0001, None), (0.00001, 1)]
+        elif func_name == "Weibull_ZI":
+            bounds = [(0.0001, None), (0.0001, None), (0, 0.99999)]
         else:
             raise ValueError(
                 'func_name is not recognised. Use the correct name e.g. "Weibull_2P"'
             )
 
-        n = len(failures) + len(right_censored)
-        delta_BIC = 1
-        BIC_array = [1000000]
-        runs = 0
-        guess = initial_guess  # set the current guess as the initial guess and then update the current guess each iteration
-        if force_shape is None:
-            k = len(bounds)
-            while (
-                delta_BIC > 0.001 and runs < 5
-            ):  # exits after BIC convergence or 5 iterations
-                runs += 1
-                result = minimize(
-                    value_and_grad(LL_func),
-                    guess,
-                    args=(failures, right_censored),
-                    jac=True,
-                    method=optimizer,
-                    bounds=bounds,
+        # determine which optimizers to use
+        stop_after_success = False
+        if (
+            optimizer is None
+        ):  # default is to try in this order but stop after one succeeds
+            optimizers_to_try = ["TNC", "L-BFGS-B", "nelder-mead", "powell"]
+            stop_after_success = True
+        else:
+            if optimizer in [
+                "best",
+                "BEST",
+                "all",
+                "ALL",
+            ]:  # try all of the bounded optimizers
+                optimizers_to_try = ["TNC", "L-BFGS-B", "nelder-mead", "powell"]
+            elif optimizer.upper() == "TNC":
+                optimizers_to_try = ["TNC"]
+            elif optimizer.upper() in ["L-BFGS-B", "LBFGSB"]:
+                optimizers_to_try = ["L-BFGS-B"]
+            elif optimizer.upper() == "POWELL":
+                optimizers_to_try = ["powell"]
+            elif optimizer.upper() in ["NELDER-MEAD", "NELDERMEAD"]:
+                optimizers_to_try = ["nelder-mead"]
+            else:
+                raise ValueError(
+                    str(
+                        str(optimizer)
+                        + ' is not a valid optimizer. Please specify either "TNC", "L-BFGS-B", "nelder-mead", "powell" or "best".'
+                    )
                 )
-                guess = result.x
-                LL2 = 2 * LL_func(guess, failures, right_censored)
-                BIC_array.append(np.log(n) * k + LL2)
-                delta_BIC = abs(BIC_array[-1] - BIC_array[-2])
-        else:  # this will only be run for Weibull_2P, Normal_2P, and Lognormal_2P so the guess is structured with this in mind
-            bounds = [bounds[0]]  # bounds on the solution. Helps a lot with stability
-            guess = [guess[0]]
-            k = 1
-            while (
-                delta_BIC > 0.001 and runs < 5
-            ):  # exits after BIC convergence or 5 iterations
-                runs += 1
-                result = minimize(
-                    value_and_grad(LL_func_force),
-                    guess,
-                    args=(failures, right_censored, force_shape),
-                    jac=True,
-                    method=optimizer,
-                    bounds=bounds,
-                )
-                guess = result.x
-                LL2 = 2 * LL_func_force(guess, failures, right_censored, force_shape)
-                BIC_array.append(np.log(n) * k + LL2)
-                delta_BIC = abs(BIC_array[-1] - BIC_array[-2])
 
-        if result.success is True:
-            params = result.x
+        # use each of the optimizers specified
+        ALL_successes = []
+        ALL_loglik = []
+        ALL_results = []
+        ALL_opt_names = []
+        optimizers_tried_str = "Optimizers tried:"
+        for opt in optimizers_to_try:
+            optim_results = loglik_optimizer(
+                LL_func,
+                initial_guess,
+                failures,
+                right_censored,
+                bounds,
+                opt,
+                force_shape,
+                LL_func_force,
+                func_name,
+            )
+            ALL_successes.append(optim_results[0])
+            ALL_loglik.append(optim_results[1])
+            ALL_results.append(optim_results[2])
+            ALL_opt_names.append(opt)
+            optimizers_tried_str = optimizers_tried_str + " " + opt + ","
+            if optim_results[0] is True and stop_after_success is True:
+                break  # stops after it finds one that works
+        optimizers_tried_str = optimizers_tried_str[0:-1]  # remove the last comma
+        # extract the results
+        if True not in ALL_successes:
+            # everything failed, need to return the initial guess
+            self.success = False
+            self.optimizer = None
+            if func_name == "Weibull_mixture":
+                colorprint(
+                    "WARNING: MLE estimates failed for Weibull_mixture. The initial estimates have been returned. These results may not be as accurate as MLE. "
+                    + optimizers_tried_str,
+                    text_color="red",
+                )
+                self.alpha_1 = initial_guess[0]
+                self.beta_1 = initial_guess[1]
+                self.alpha_2 = initial_guess[2]
+                self.beta_2 = initial_guess[3]
+                self.proportion_1 = initial_guess[4]
+                self.proportion_2 = 1 - initial_guess[4]
+            elif func_name == "Weibull_CR":
+                colorprint(
+                    "WARNING: MLE estimates failed for Weibull_CR. The initial estimates have been returned. These results may not be as accurate as MLE. "
+                    + optimizers_tried_str,
+                    text_color="red",
+                )
+                self.alpha_1 = initial_guess[0]
+                self.beta_1 = initial_guess[1]
+                self.alpha_2 = initial_guess[2]
+                self.beta_2 = initial_guess[3]
+            elif func_name == "Weibull_DSZI":
+                colorprint(
+                    "WARNING: MLE estimates failed for Weibull_DSZI. The initial estimates have been returned. These results may not be as accurate as MLE. "
+                    + optimizers_tried_str,
+                    text_color="red",
+                )
+                self.alpha = initial_guess[0]
+                self.beta = initial_guess[1]
+                self.DS = initial_guess[2]
+                self.ZI = initial_guess[3]
+            elif func_name == "Weibull_DS":
+                colorprint(
+                    "WARNING: MLE estimates failed for Weibull_DS. The initial estimates have been returned. These results may not be as accurate as MLE. "
+                    + optimizers_tried_str,
+                    text_color="red",
+                )
+                self.alpha = initial_guess[0]
+                self.beta = initial_guess[1]
+                self.DS = initial_guess[2]
+            elif func_name == "Weibull_ZI":
+                colorprint(
+                    "WARNING: MLE estimates failed for Weibull_ZI. The initial estimates have been returned. These results may not be as accurate as MLE. "
+                    + optimizers_tried_str,
+                    text_color="red",
+                )
+                self.alpha = initial_guess[0]
+                self.beta = initial_guess[1]
+                self.ZI = initial_guess[2]
+            else:
+                colorprint(
+                    str(
+                        "WARNING: MLE estimates failed for "
+                        + func_name
+                        + ". The least squares estimates have been returned. These results may not be as accurate as MLE. "
+                        + optimizers_tried_str
+                    ),
+                    text_color="red",
+                )
+                if force_shape is None:
+                    self.scale = initial_guess[0]  # alpha, mu, Lambda
+                    if func_name not in ["Exponential_1P", "Exponential_2P"]:
+                        self.shape = initial_guess[1]  # beta, sigma
+                    else:
+                        if func_name == "Exponential_2P":
+                            self.gamma = initial_guess[1]  # gamma for Exponential_2P
+                    if func_name in [
+                        "Weibull_3P",
+                        "Gamma_3P",
+                        "Loglogistic_3P",
+                        "Lognormal_3P",
+                    ]:
+                        # gamma for Weibull_3P, Gamma_3P, Loglogistic_3P, Lognormal_3P
+                        self.gamma = initial_guess[2]
+                # this will only be reached for Weibull_2P, Normal_2P and Lognormal_2P so the scale and shape extraction is fine for these
+                else:
+                    self.scale = initial_guess[0]
+                    self.shape = force_shape
+        else:
+            # at least one optimizer succeeded. Need to drop the failed ones then get the best of the successes
+            items = np.arange(0, len(ALL_successes))[::-1]
+
+            for i in items:
+                if ALL_successes[i] is not True:
+                    ALL_successes.pop(i)
+                    ALL_loglik.pop(i)
+                    ALL_results.pop(i)
+                    ALL_opt_names.pop(i)
+            idx_best = ALL_loglik.index(min(ALL_loglik))
+            params = ALL_results[idx_best]
+            self.optimizer = ALL_opt_names[idx_best]
             self.success = True
+
             if func_name == "Weibull_mixture":
                 self.alpha_1 = params[0]
                 self.beta_1 = params[1]
@@ -4307,6 +4633,19 @@ class MLE_optimisation:
                 self.beta_1 = params[1]
                 self.alpha_2 = params[2]
                 self.beta_2 = params[3]
+            elif func_name == "Weibull_DSZI":
+                self.alpha = params[0]
+                self.beta = params[1]
+                self.DS = params[2]
+                self.ZI = params[3]
+            elif func_name == "Weibull_DS":
+                self.alpha = params[0]
+                self.beta = params[1]
+                self.DS = params[2]
+            elif func_name == "Weibull_ZI":
+                self.alpha = params[0]
+                self.beta = params[1]
+                self.ZI = params[2]
             else:
                 if force_shape is None:
                     self.scale = params[0]  # alpha, mu, Lambda
@@ -4327,119 +4666,13 @@ class MLE_optimisation:
                 else:  # this will only be reached for Weibull_2P, Normal_2P and Lognormal_2P so the scale and shape extraction is fine for these
                     self.scale = params[0]
                     self.shape = force_shape
-        else:  # if the bounded optimizer (L-BFGS-B, TNC, powell) fails then we have a second attempt using the slower but slightly more reliable nelder-mead optimizer.
-            if force_shape is None:
-                guess = initial_guess
-                result = minimize(
-                    value_and_grad(LL_func),
-                    guess,
-                    args=(failures, right_censored),
-                    jac=True,
-                    tol=1e-4,
-                    method="nelder-mead",
-                )
-            else:
-                guess = [initial_guess[0]]
-                result = minimize(
-                    value_and_grad(LL_func_force),
-                    guess,
-                    args=(failures, right_censored, force_shape),
-                    jac=True,
-                    tol=1e-4,
-                    method="nelder-mead",
-                )
-            if result.success is True:
-                params = result.x
-                if func_name == "Weibull_mixture":
-                    self.alpha_1 = params[0]
-                    self.beta_1 = params[1]
-                    self.alpha_2 = params[2]
-                    self.beta_2 = params[3]
-                    self.proportion_1 = params[4]
-                    self.proportion_2 = 1 - params[4]
-                elif func_name == "Weibull_CR":
-                    self.alpha_1 = params[0]
-                    self.beta_1 = params[1]
-                    self.alpha_2 = params[2]
-                    self.beta_2 = params[3]
-                else:
-                    if force_shape is None:
-                        self.scale = params[0]  # alpha, mu, Lambda
-                        if func_name not in ["Exponential_1P", "Exponential_2P"]:
-                            self.shape = params[1]  # beta, sigma
-                        else:
-                            if func_name == "Exponential_2P":
-                                self.gamma = params[1]  # gamma for Exponential_2P
-                        if func_name in [
-                            "Weibull_3P",
-                            "Gamma_3P",
-                            "Loglogistic_3P",
-                            "Lognormal_3P",
-                        ]:
-                            self.gamma = params[
-                                2
-                            ]  # gamma for Weibull_3P, Gamma_3P, Loglogistic_3P, Lognormal_3P
-                    else:  # this will only be reached for Weibull_2P, Normal_2P and Lognormal_2P so the scale and shape extraction is fine for these
-                        self.scale = params[0]
-                        self.shape = force_shape
-            else:
-                if func_name == "Weibull_mixture":
-                    colorprint(
-                        "WARNING: MLE estimates failed for Weibull_mixture. The initial estimates have been returned. These results may not be as accurate as MLE.",
-                        text_color="red",
-                    )
-                    self.alpha_1 = initial_guess[0]
-                    self.beta_1 = initial_guess[1]
-                    self.alpha_2 = initial_guess[2]
-                    self.beta_2 = initial_guess[3]
-                    self.proportion_1 = initial_guess[4]
-                    self.proportion_2 = 1 - initial_guess[4]
-                elif func_name == "Weibull_CR":
-                    colorprint(
-                        "WARNING: MLE estimates failed for Weibull_CR. The initial estimates have been returned. These results may not be as accurate as MLE.",
-                        text_color="red",
-                    )
-                    self.alpha_1 = initial_guess[0]
-                    self.beta_1 = initial_guess[1]
-                    self.alpha_2 = initial_guess[2]
-                    self.beta_2 = initial_guess[3]
-                else:
-                    colorprint(
-                        str(
-                            "WARNING: MLE estimates failed for "
-                            + func_name
-                            + ". The least squares estimates have been returned. These results may not be as accurate as MLE."
-                        ),
-                        text_color="red",
-                    )
-                    if force_shape is None:
-                        self.scale = initial_guess[0]  # alpha, mu, Lambda
-                        if func_name not in ["Exponential_1P", "Exponential_2P"]:
-                            self.shape = initial_guess[1]  # beta, sigma
-                        else:
-                            if func_name == "Exponential_2P":
-                                self.gamma = initial_guess[
-                                    1
-                                ]  # gamma for Exponential_2P
-                        if func_name in [
-                            "Weibull_3P",
-                            "Gamma_3P",
-                            "Loglogistic_3P",
-                            "Lognormal_3P",
-                        ]:
-                            self.gamma = initial_guess[
-                                2
-                            ]  # gamma for Weibull_3P, Gamma_3P, Loglogistic_3P, Lognormal_3P
-                    else:  # this will only be reached for Weibull_2P, Normal_2P and Lognormal_2P so the scale and shape extraction is fine for these
-                        self.scale = initial_guess[0]
-                        self.shape = force_shape
 
 
-class ALT_MLE_optimisation:
+class ALT_MLE_optimization:
     """
     This performs the MLE method to find the parameters.
-    If the optimizer is None then multiple optimisers will be tried and the best result (lowest LL) will be returned.
-    If the optimiser is specified then it will be used. If it fails then nelder-mead will be used. If nelder-mead fails then the initial guess and a warning will be returned.
+    If the optimizer is None then all bounded optimizers will be tried and the best result (lowest log-likelihood) will be returned.
+    If the optimizer is specified then it will be used. If it fails then the initial guess will be returned with a warning.
     """
 
     def __init__(
@@ -4456,6 +4689,80 @@ class ALT_MLE_optimisation:
         right_censored_stress_1=None,
         right_censored_stress_2=None,
     ):
+        # this sub-function does the actual optimization. It is called each time a new optimizer is tried
+        def loglik_optimizer(
+            initial_guess,
+            dual_stress,
+            LL_func,
+            failures,
+            right_censored,
+            failure_stress_1,
+            failure_stress_2,
+            right_censored_stress_1,
+            right_censored_stress_2,
+            bounds,
+            optimizer,
+        ):
+            delta_LL = 1
+            LL_array = [1000000]
+            runs = 0
+            guess = initial_guess  # set the current guess as the initial guess and then update the current guess each iteration
+            while (
+                delta_LL > 0.001 and runs < 5
+            ):  # exits after BIC convergence or 5 iterations
+                runs += 1
+                # single stress model
+                if dual_stress is False:
+                    result = minimize(
+                        value_and_grad(LL_func),
+                        guess,
+                        args=(
+                            failures,
+                            right_censored,
+                            failure_stress_1,
+                            right_censored_stress_1,
+                        ),
+                        jac=True,
+                        method=optimizer,
+                        bounds=bounds,
+                    )
+                    LL2 = -LL_func(
+                        result.x,
+                        failures,
+                        right_censored,
+                        failure_stress_1,
+                        right_censored_stress_1,
+                    )
+                else:
+                    # dual stress model
+                    result = minimize(
+                        value_and_grad(LL_func),
+                        guess,
+                        args=(
+                            failures,
+                            right_censored,
+                            failure_stress_1,
+                            failure_stress_2,
+                            right_censored_stress_1,
+                            right_censored_stress_2,
+                        ),
+                        jac=True,
+                        method=optimizer,
+                        bounds=bounds,
+                    )
+                    LL2 = -LL_func(
+                        result.x,
+                        failures,
+                        right_censored,
+                        failure_stress_1,
+                        failure_stress_2,
+                        right_censored_stress_1,
+                        right_censored_stress_2,
+                    )
+                LL_array.append(np.abs(LL2))
+                delta_LL = abs(LL_array[-1] - LL_array[-2])
+                guess = result.x  # update the guess each iteration
+            return result.success, LL_array[-1], result.x
 
         if model == "Exponential":
             bounds = [(None, None), (0, None), (0, None)]  # a, b, shape
@@ -4509,193 +4816,129 @@ class ALT_MLE_optimisation:
             right_censored_stress_1 = []
             right_censored_stress_2 = []
 
-        def loglik_optimiser(
-            initial_guess,
-            dual_stress,
-            LL_func,
-            failures,
-            right_censored,
-            failure_stress_1,
-            failure_stress_2,
-            right_censored_stress_1,
-            right_censored_stress_2,
-            bounds,
-            optimizer,
-        ):
-            delta_LL = 1
-            LL_array = [1000000]
-            runs = 0
-            guess = initial_guess  # set the current guess as the initial guess and then update the current guess each iteration
-            while (
-                delta_LL > 0.001 and runs < 5
-            ):  # exits after BIC convergence or 5 iterations
-                runs += 1
-                if dual_stress is False:
-                    result = minimize(
-                        value_and_grad(LL_func),
-                        guess,
-                        args=(
-                            failures,
-                            right_censored,
-                            failure_stress_1,
-                            right_censored_stress_1,
-                        ),
-                        jac=True,
-                        method=optimizer,
-                        bounds=bounds,
+        # determine which optimizers to use
+        stop_after_success = False
+        if (
+            optimizer is None
+        ):  # default is to try in this order but stop after one succeeds
+            optimizers_to_try = ["TNC", "L-BFGS-B", "nelder-mead", "powell"]
+            stop_after_success = True
+        else:
+            if optimizer in [
+                "best",
+                "BEST",
+                "all",
+                "ALL",
+            ]:  # try all of the bounded optimizers
+                optimizers_to_try = ["TNC", "L-BFGS-B", "nelder-mead", "powell"]
+            elif optimizer.upper() == "TNC":
+                optimizers_to_try = ["TNC"]
+            elif optimizer.upper() in ["L-BFGS-B", "LBFGSB"]:
+                optimizers_to_try = ["L-BFGS-B"]
+            elif optimizer.upper() == "POWELL":
+                optimizers_to_try = ["powell"]
+            elif optimizer.upper() in ["NELDER-MEAD", "NELDERMEAD"]:
+                optimizers_to_try = ["nelder-mead"]
+            else:
+                raise ValueError(
+                    str(
+                        str(optimizer)
+                        + ' is not a valid optimizer. Please specify either "TNC", "L-BFGS-B", "nelder-mead", "powell" or "best".'
                     )
-                    LL2 = -LL_func(
-                        result.x,
-                        failures,
-                        right_censored,
-                        failure_stress_1,
-                        right_censored_stress_1,
-                    )
-                else:
-                    result = minimize(
-                        value_and_grad(LL_func),
-                        guess,
-                        args=(
-                            failures,
-                            right_censored,
-                            failure_stress_1,
-                            failure_stress_2,
-                            right_censored_stress_1,
-                            right_censored_stress_2,
-                        ),
-                        jac=True,
-                        method=optimizer,
-                        bounds=bounds,
-                    )
-                    LL2 = -LL_func(
-                        result.x,
-                        failures,
-                        right_censored,
-                        failure_stress_1,
-                        failure_stress_2,
-                        right_censored_stress_1,
-                        right_censored_stress_2,
-                    )
-                LL_array.append(np.abs(LL2))
-                delta_LL = abs(LL_array[-1] - LL_array[-2])
-                guess = result.x  # update the guess each iteration
-            return result.success, LL_array[-1], result.x
-
-        success = True  # this will be overwritten later if all optimizers failed
-        if optimizer is None:  # try TNC and L-BFGS-B
-            LL_optim_TNC = loglik_optimiser(
-                initial_guess,
-                dual_stress,
-                LL_func,
-                failures,
-                right_censored,
-                failure_stress_1,
-                failure_stress_2,
-                right_censored_stress_1,
-                right_censored_stress_2,
-                bounds,
-                optimizer="TNC",
-            )
-            LL_optim_LBFGSB = loglik_optimiser(
-                initial_guess,
-                dual_stress,
-                LL_func,
-                failures,
-                right_censored,
-                failure_stress_1,
-                failure_stress_2,
-                right_censored_stress_1,
-                right_censored_stress_2,
-                bounds,
-                optimizer="L-BFGS-B",
-            )
-            if LL_optim_TNC[0] is True and LL_optim_LBFGSB[0] is True:  # both worked
-                if LL_optim_TNC[1] < LL_optim_LBFGSB[1]:  # TNC wins
-                    params = LL_optim_TNC[2]
-                else:  # L-BFGS-B wins
-                    params = LL_optim_LBFGSB[2]
-            elif (
-                LL_optim_TNC[0] is True and LL_optim_LBFGSB[0] is False
-            ):  # only TNC worked
-                params = LL_optim_TNC[2]
-            elif (
-                LL_optim_TNC[0] is False and LL_optim_LBFGSB[0] is True
-            ):  # only L-BFGS-B worked
-                params = LL_optim_LBFGSB[2]
-            else:  # neither worked, try powell
-                LL_optim_powell = loglik_optimiser(
-                    initial_guess,
-                    dual_stress,
-                    LL_func,
-                    failures,
-                    right_censored,
-                    failure_stress_1,
-                    failure_stress_2,
-                    right_censored_stress_1,
-                    right_censored_stress_2,
-                    bounds,
-                    optimizer="powell",
                 )
-                if LL_optim_powell[0] is True:
-                    params = LL_optim_powell[2]  # powell worked
-                else:
-                    success = False  # powell failed. nelder-mead will be tried
-        elif optimizer == "L-BFGS-B":
-            LL_optim_LBFGSB = loglik_optimiser(
-                initial_guess,
-                dual_stress,
-                LL_func,
-                failures,
-                right_censored,
-                failure_stress_1,
-                failure_stress_2,
-                right_censored_stress_1,
-                right_censored_stress_2,
-                bounds,
-                optimizer="L-BFGS-B",
-            )
-            if LL_optim_LBFGSB[0] is True:
-                params = LL_optim_LBFGSB[2]
-            else:
-                success = False
-        elif optimizer == "TNC":
-            LL_optim_TNC = loglik_optimiser(
-                initial_guess,
-                dual_stress,
-                LL_func,
-                failures,
-                right_censored,
-                failure_stress_1,
-                failure_stress_2,
-                right_censored_stress_1,
-                right_censored_stress_2,
-                bounds,
-                optimizer="TNC",
-            )
-            if LL_optim_TNC[0] is True:
-                params = LL_optim_TNC[2]
-            else:
-                success = False
-        elif optimizer == "powell":
-            LL_optim_powell = loglik_optimiser(
-                initial_guess,
-                dual_stress,
-                LL_func,
-                failures,
-                right_censored,
-                failure_stress_1,
-                failure_stress_2,
-                right_censored_stress_1,
-                right_censored_stress_2,
-                bounds,
-                optimizer="powell",
-            )
-            if LL_optim_powell[0] is True:
-                params = LL_optim_powell[2]
-            else:
-                success = False
 
-        if success is True:
+        # use each of the optimizers specified
+        ALL_successes = []
+        ALL_loglik = []
+        ALL_results = []
+        ALL_opt_names = []
+        optimizers_tried_str = "Optimizers tried:"
+        for opt in optimizers_to_try:
+            optim_results = loglik_optimizer(
+                initial_guess,
+                dual_stress,
+                LL_func,
+                failures,
+                right_censored,
+                failure_stress_1,
+                failure_stress_2,
+                right_censored_stress_1,
+                right_censored_stress_2,
+                bounds,
+                opt,
+            )
+            ALL_successes.append(optim_results[0])
+            ALL_loglik.append(optim_results[1])
+            ALL_results.append(optim_results[2])
+            ALL_opt_names.append(opt)
+            optimizers_tried_str = optimizers_tried_str + " " + opt + ","
+            if optim_results[0] is True and stop_after_success is True:
+                break  # stops after it finds one that works
+        optimizers_tried_str = optimizers_tried_str[0:-1]  # remove the last comma
+
+        # extract the results
+        if True not in ALL_successes:
+            # everything failed, need to return the initial guess
+            self.success = False
+            self.optimizer = None
+            colorprint(
+                str(
+                    "WARNING: MLE estimates failed for "
+                    + dist
+                    + "_"
+                    + model
+                    + ". The least squares estimates have been returned. These results may not be as accurate as MLE. "
+                    + optimizers_tried_str
+                ),
+                text_color="red",
+            )
+
+            if model == "Exponential":
+                self.a = initial_guess[0]
+                self.b = initial_guess[1]
+            elif model == "Eyring":
+                self.a = initial_guess[0]
+                self.c = initial_guess[1]
+            elif model == "Power":
+                self.a = initial_guess[0]
+                self.n = initial_guess[1]
+            elif model == "Dual_Exponential":
+                self.a = initial_guess[0]
+                self.b = initial_guess[1]
+                self.c = initial_guess[2]
+            elif model == "Power_Exponential":
+                self.a = initial_guess[0]
+                self.c = initial_guess[1]
+                self.n = initial_guess[2]
+            elif model == "Dual_Power":
+                self.c = initial_guess[0]
+                self.m = initial_guess[1]
+                self.n = initial_guess[2]
+
+            if dual_stress is False:
+                if dist == "Weibull":
+                    self.beta = initial_guess[2]
+                elif dist in ["Lognormal", "Normal"]:
+                    self.sigma = initial_guess[2]
+            else:
+                if dist == "Weibull":
+                    self.beta = initial_guess[3]
+                elif dist in ["Lognormal", "Normal"]:
+                    self.sigma = initial_guess[3]
+        else:
+            # at least one optimizer succeeded. Need to drop the failed ones then get the best of the successes
+            items = np.arange(0, len(ALL_successes))[::-1]
+            for i in items:
+                if ALL_successes[i] is not True:
+                    ALL_successes.pop(i)
+                    ALL_loglik.pop(i)
+                    ALL_results.pop(i)
+                    ALL_opt_names.pop(i)
+            idx_best = ALL_loglik.index(min(ALL_loglik))
+            params = ALL_results[idx_best]
+            self.optimizer = ALL_opt_names[idx_best]
+            self.success = True
+
             if model == "Exponential":
                 self.a = params[0]
                 self.b = params[1]
@@ -4728,121 +4971,6 @@ class ALT_MLE_optimisation:
                     self.beta = params[3]
                 elif dist in ["Lognormal", "Normal"]:
                     self.sigma = params[3]
-
-        else:  # if the bounded optimizer (L-BFGS-B, TNC, powell) fails then we have a second attempt using the slower but slightly more reliable nelder-mead optimizer.
-            guess = initial_guess
-            if dual_stress is False:
-                result = minimize(
-                    value_and_grad(LL_func),
-                    guess,
-                    args=(
-                        failures,
-                        right_censored,
-                        failure_stress_1,
-                        right_censored_stress_1,
-                    ),
-                    jac=True,
-                    tol=1e-4,
-                    method="nelder-mead",
-                )
-            else:
-                result = minimize(
-                    value_and_grad(LL_func),
-                    guess,
-                    args=(
-                        failures,
-                        right_censored,
-                        failure_stress_1,
-                        failure_stress_2,
-                        right_censored_stress_1,
-                        right_censored_stress_2,
-                    ),
-                    jac=True,
-                    tol=1e-4,
-                    method="nelder-mead",
-                )
-
-            if result.success is True:
-                params = result.x
-                if model == "Exponential":
-                    self.a = params[0]
-                    self.b = params[1]
-                elif model == "Eyring":
-                    self.a = params[0]
-                    self.c = params[1]
-                elif model == "Power":
-                    self.a = params[0]
-                    self.n = params[1]
-                elif model == "Dual_Exponential":
-                    self.a = params[0]
-                    self.b = params[1]
-                    self.c = params[2]
-                elif model == "Power_Exponential":
-                    self.a = params[0]
-                    self.c = params[1]
-                    self.n = params[2]
-                elif model == "Dual_Power":
-                    self.c = params[0]
-                    self.m = params[1]
-                    self.n = params[2]
-
-                if dual_stress is False:
-                    if dist == "Weibull":
-                        self.beta = params[2]
-                    elif dist in ["Lognormal", "Normal"]:
-                        self.sigma = params[2]
-                else:
-                    if dist == "Weibull":
-                        self.beta = params[3]
-                    elif dist in ["Lognormal", "Normal"]:
-                        self.sigma = params[3]
-
-            else:
-                success = False  # everything failed
-                colorprint(
-                    str(
-                        "WARNING: MLE estimates failed for "
-                        + dist
-                        + " "
-                        + model
-                        + ". The least squares estimates have been returned. These results may not be as accurate as MLE."
-                    ),
-                    text_color="red",
-                )
-
-                if model == "Exponential":
-                    self.a = initial_guess[0]
-                    self.b = initial_guess[1]
-                elif model == "Eyring":
-                    self.a = initial_guess[0]
-                    self.c = initial_guess[1]
-                elif model == "Power":
-                    self.a = initial_guess[0]
-                    self.n = initial_guess[1]
-                elif model == "Dual_Exponential":
-                    self.a = initial_guess[0]
-                    self.b = initial_guess[1]
-                    self.c = initial_guess[2]
-                elif model == "Power_Exponential":
-                    self.a = initial_guess[0]
-                    self.c = initial_guess[1]
-                    self.n = initial_guess[2]
-                elif model == "Dual_Power":
-                    self.c = initial_guess[0]
-                    self.m = initial_guess[1]
-                    self.n = initial_guess[2]
-
-                if dual_stress is False:
-                    if dist == "Weibull":
-                        self.beta = initial_guess[2]
-                    elif dist in ["Lognormal", "Normal"]:
-                        self.sigma = initial_guess[2]
-                else:
-                    if dist == "Weibull":
-                        self.beta = initial_guess[3]
-                    elif dist in ["Lognormal", "Normal"]:
-                        self.sigma = initial_guess[3]
-        self.success = success
 
 
 def write_df_to_xlsx(df, path, **kwargs):
@@ -5202,7 +5330,7 @@ def life_stress_plot(
                         "WARNING: The axes passed to the life_stress_plot has been ignored as it contains 3d projection. Only specify 3d projection in life stress plots for dual stress models.",
                         text_color="red",
                     )
-                    fig = plt.figure(figsize=(9, 9))
+                    plt.figure(figsize=(9, 9))
             else:  # dual stress models require 3d projection
                 if hasattr(ax, "get_zlim") is True:
                     plt.sca(ax=ax)  # use the axes passed if 3d
@@ -5377,3 +5505,41 @@ def life_stress_plot(
             plt.title("Life-stress plot\n" + dist + "-" + model + " model")
             plt.tight_layout()
         return plt.gca()
+
+
+def xy_downsample(x, y, downsample_factor=None, default_max_values=1000):
+    """
+    Downsamples the x and y arrays.
+    Downsampling is done using the downsample_factor. If the down_sample factor
+    is 2 then every second value will be returned, if 3 then every third value
+    will be returned. The first and last items will always be included in the
+    downsampled dataset. If downsample_factor is not specified, downsampling
+    will only occur if there are more than default_max_values and the downsample
+    factor will aim for a minimum of 500 values to be returned.
+    """
+
+    x_sorted = np.sort(x)
+    y_sorted = np.sort(y)
+    len_x = len(x)
+    if downsample_factor is False:
+        return x, y
+    if downsample_factor in [None, True] and len_x < default_max_values:
+        return x, y
+    else:
+        if downsample_factor in [None, True]:
+            downsample_factor = np.floor(len_x / (0.5 * default_max_values))
+        if len_x / downsample_factor < 2:
+            return x, y
+        else:
+            indices = np.arange(
+                start=0, stop=len_x, step=int(np.floor(downsample_factor)), dtype=int
+            )
+
+            if len_x - 1 not in indices:
+                indices[-1] = len_x - 1
+            x_downsample = []
+            y_downsample = []
+            for idx in indices:
+                x_downsample.append(x_sorted[idx])
+                y_downsample.append(y_sorted[idx])
+            return x_downsample, y_downsample

@@ -19,6 +19,9 @@ Fit_Loglogistic_2P
 Fit_Loglogistic_3P
 Fit_Weibull_Mixture
 Fit_Weibull_CR
+Fit_Weibull_DS
+Fit_Weibull_ZI
+Fit_Weibull_DSZI
 
 Note that the Beta distribution is only for data in the range 0 < t < 1.
 There is also a Fit_Everything function which will fit all distributions (except
@@ -28,12 +31,12 @@ values.
 All functions in this module work using autograd to find the derivative of the
 log-likelihood function. In this way, the code only needs to specify the log PDF
 and log SF in order to obtain the fitted parameters. Initial guesses of the
-parameters are essential for autograd and are obtained using scipy or least
-squares (depending on the function). If the distribution is an extremely bad fit
-or is heavily censored (>99%) then these guesses may be poor and the fit might
-not be successful. Generally the fit achieved by autograd is highly successful,
-and whenever it fails the initial guess will be used and a warning will be
-displayed.
+parameters are essential for autograd and are obtained using least squares or
+non-linear least squares (depending on the function). If the distribution is an
+extremely bad fit or is heavily censored (>99%) then these guesses may be poor
+and the fit might not be successful. Generally the fit achieved by autograd is
+highly successful, and whenever it fails the initial guess will be used and a
+warning will be displayed.
 """
 
 import numpy as np
@@ -53,6 +56,7 @@ from reliability.Distributions import (
     Gumbel_Distribution,
     Mixture_Model,
     Competing_Risks_Model,
+    DSZI_Model,
 )
 from reliability.Nonparametric import KaplanMeier
 from reliability.Probability_plotting import plotting_positions
@@ -63,8 +67,9 @@ from reliability.Utils import (
     fitters_input_checking,
     colorprint,
     least_squares,
-    MLE_optimisation,
-    LS_optimisation,
+    MLE_optimization,
+    LS_optimization,
+    xy_downsample,
 )
 import autograd.numpy as anp
 from autograd import value_and_grad
@@ -128,14 +133,22 @@ class Fit_Everything:
         regression on X), or 'RRY' (Rank regression on Y). LS will perform both
         RRX and RRY and return the better one. Default is 'MLE'.
     optimizer : str, optional
-        The optimisation algorithm used to find the solution. Must be either
-        'L-BFGS-B', 'TNC', or 'powell'. These are all bound constrained methods.
-        If the bounded method fails, 'nelder-mead' will be used. If
-        'nelder-mead' fails then the initial guess will be returned with a
-        warning. For more information on these optimizers see
-        https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.minimize.html#scipy.optimize.minimize
-        Default is 'L-BFGS-B' if the data is <= 97% right censored or 'TNC' if
-        the data is > 97% right censored.
+        The optimization algorithm used to find the solution. Must be either
+        'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'. Specifying the optimizer
+        will result in that optimizer being used. To use all of these specify
+        'best' and the best result will be returned. The default behaviour is to
+        try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and
+        'powell') and stop once one of the optimizers finds a solution. If the
+        optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation
+        <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
+    downsample_scatterplot : bool, int, optional
+        If True or None, and there are over 1000 points, then the scatterplot
+        will be downsampled by a factor. The default downsample factor will seek
+        to produce between 500 and 1000 points. If a number is specified, it
+        will be used as the downsample factor. Default is True. This
+        functionality makes plotting faster when there are very large numbers of
+        points. It only affects the scatterplot not the calculations.
 
     Returns
     -------
@@ -189,6 +202,7 @@ class Fit_Everything:
         show_PP_plot=True,
         show_probability_plot=True,
         show_best_distribution_probability_plot=True,
+        downsample_scatterplot=True,
     ):
 
         inputs = fitters_input_checking(
@@ -230,15 +244,13 @@ class Fit_Everything:
         self.failures = failures
         self.right_censored = right_censored
         self._all_data = np.hstack([failures, right_censored])
-        self._frac_fail = len(failures) / len(
-            self._all_data
-        )  # This is used for scaling the histogram when there is censored data
-        self._frac_cens = len(right_censored) / len(
-            self._all_data
-        )  # This is used for reporting the fraction censored in the printed output
-        d = sorted(
-            self._all_data
-        )  # sorting the failure data is necessary for plotting quantiles in order
+        # This is used for scaling the histogram when there is censored data
+        self._frac_fail = len(failures) / len(self._all_data)
+        # This is used for reporting the fraction censored in the printed output
+        self._frac_cens = len(right_censored) / len(self._all_data)
+        # sorting the failure data is necessary for plotting quantiles in order
+        d = sorted(self._all_data)
+        self.__downsample_scatterplot = downsample_scatterplot
 
         if exclude is None:
             exclude = []
@@ -250,7 +262,14 @@ class Fit_Everything:
             )
         if len(failures) < 3:
             exclude.extend(
-                ["Weibull_3P", "Gamma_3P", "Loglogistic_3P", "Lognormal_3P"]
+                [
+                    "Weibull_3P",
+                    "Gamma_3P",
+                    "Loglogistic_3P",
+                    "Lognormal_3P",
+                    "Weibull_Mixture",
+                    "Weibull_CR",
+                ]
             )  # do not fit the 3P distributions if there are only 2 failures
         # flexible name checking for excluded distributions
         excluded_distributions = []
@@ -259,7 +278,7 @@ class Fit_Everything:
             if type(item) not in [str, np.str_]:
                 raise ValueError(
                     "exclude must be a list or array of strings that specified the distributions to be excluded from fitting. Available strings are:"
-                    "\nWeibull_2P\nWeibull_3P\nNormal_2P\nGamma_2P\nLoglogistic_2P\nGamma_3P\nLognormal_2P\nLognormal_3P\nLoglogistic_3P\nGumbel_2P\nExponential_2P\nExponential_1P\nBeta_2P"
+                    "\nWeibull_2P\nWeibull_3P\nNormal_2P\nGamma_2P\nLoglogistic_2P\nGamma_3P\nLognormal_2P\nLognormal_3P\nLoglogistic_3P\nGumbel_2P\nExponential_2P\nExponential_1P\nBeta_2P\nWeibull_Mixture\nWeibull_CR\nWeibull_DS"
                 )
             if item.upper() in ["WEIBULL_2P", "WEIBULL2P", "WEIBULL2"]:
                 excluded_distributions.append("Weibull_2P")
@@ -301,6 +320,31 @@ class Fit_Everything:
                 excluded_distributions.append("Loglogistic_3P")
             elif item.upper() in ["BETA_2P", "BETA2P", "BETA2"]:
                 excluded_distributions.append("Beta_2P")
+            elif item.upper() in [
+                "WEIBULLMIXTURE",
+                "WEIBULL_MIXTURE",
+                "MIXTURE",
+                "WEIBULLMIX",
+                "WEIBULL_MIX",
+                "MIX",
+            ]:
+                excluded_distributions.append("Weibull_Mixture")
+            elif item.upper() in [
+                "WEIBULLCR",
+                "WEIBULL_CR",
+                "WEIBULL_COMPETING_RISKS",
+                "WEIBULL_COMPETINGRISKS",
+                "WEIBULLCOMPETINGRISKS",
+            ]:
+                excluded_distributions.append("Weibull_CR")
+            elif item.upper() in [
+                "WEIBULLDS",
+                "WEIBULL_DS",
+                "WEIBULL_DEFECTIVE_SUBPOPULATION",
+                "WEIBULL_DEFECTIVESUBPOPULATION",
+                "WEIBULLDEFECTIVESUBPOPULATION",
+            ]:
+                excluded_distributions.append("Weibull_DS")
             else:
                 unknown_exclusions.append(item)
         if len(unknown_exclusions) > 0:
@@ -312,7 +356,7 @@ class Fit_Everything:
                 text_color="red",
             )
             colorprint(
-                "Available distributions to exclude are: Weibull_2P, Weibull_3P, Normal_2P, Gamma_2P, Loglogistic_2P, Gamma_3P, Lognormal_2P, Lognormal_3P, Loglogistic_3P, Gumbel_2P, Exponential_2P, Exponential_1P, Beta_2P",
+                "Available distributions to exclude are: Weibull_2P, Weibull_3P, Normal_2P, Gamma_2P, Loglogistic_2P, Gamma_3P, Lognormal_2P, Lognormal_3P, Loglogistic_3P, Gumbel_2P, Exponential_2P, Exponential_1P, Beta_2P, Weibull_Mixture, Weibull_CR, Weibull_DS",
                 text_color="red",
             )
         if (
@@ -329,6 +373,12 @@ class Fit_Everything:
                 "Alpha",
                 "Beta",
                 "Gamma",
+                "Alpha 1",
+                "Beta 1",
+                "Alpha 2",
+                "Beta 2",
+                "Proportion 1",
+                "DS",
                 "Mu",
                 "Sigma",
                 "Lambda",
@@ -336,6 +386,7 @@ class Fit_Everything:
                 "AICc",
                 "BIC",
                 "AD",
+                "optimizer",
             ]
         )
         # Fit the parametric models and extract the fitted parameters
@@ -355,6 +406,7 @@ class Fit_Everything:
             self.Weibull_3P_BIC = self.__Weibull_3P_params.BIC
             self.Weibull_3P_AICc = self.__Weibull_3P_params.AICc
             self.Weibull_3P_AD = self.__Weibull_3P_params.AD
+            self.Weibull_3P_optimizer = self.__Weibull_3P_params.optimizer
             self._parametric_CDF_Weibull_3P = self.__Weibull_3P_params.distribution.CDF(
                 xvals=d, show_plot=False
             )
@@ -364,6 +416,12 @@ class Fit_Everything:
                     "Alpha": self.Weibull_3P_alpha,
                     "Beta": self.Weibull_3P_beta,
                     "Gamma": self.Weibull_3P_gamma,
+                    "Alpha 1": "",
+                    "Beta 1": "",
+                    "Alpha 2": "",
+                    "Beta 2": "",
+                    "Proportion 1": "",
+                    "DS": "",
                     "Mu": "",
                     "Sigma": "",
                     "Lambda": "",
@@ -371,6 +429,7 @@ class Fit_Everything:
                     "AICc": self.Weibull_3P_AICc,
                     "BIC": self.Weibull_3P_BIC,
                     "AD": self.Weibull_3P_AD,
+                    "optimizer": self.Weibull_3P_optimizer,
                 },
                 ignore_index=True,
             )
@@ -392,6 +451,7 @@ class Fit_Everything:
             self.Gamma_3P_BIC = self.__Gamma_3P_params.BIC
             self.Gamma_3P_AICc = self.__Gamma_3P_params.AICc
             self.Gamma_3P_AD = self.__Gamma_3P_params.AD
+            self.Gamma_3P_optimizer = self.__Gamma_3P_params.optimizer
             self._parametric_CDF_Gamma_3P = self.__Gamma_3P_params.distribution.CDF(
                 xvals=d, show_plot=False
             )
@@ -401,6 +461,12 @@ class Fit_Everything:
                     "Alpha": self.Gamma_3P_alpha,
                     "Beta": self.Gamma_3P_beta,
                     "Gamma": self.Gamma_3P_gamma,
+                    "Alpha 1": "",
+                    "Beta 1": "",
+                    "Alpha 2": "",
+                    "Beta 2": "",
+                    "Proportion 1": "",
+                    "DS": "",
                     "Mu": "",
                     "Sigma": "",
                     "Lambda": "",
@@ -408,6 +474,7 @@ class Fit_Everything:
                     "AICc": self.Gamma_3P_AICc,
                     "BIC": self.Gamma_3P_BIC,
                     "AD": self.Gamma_3P_AD,
+                    "optimizer": self.Gamma_3P_optimizer,
                 },
                 ignore_index=True,
             )
@@ -427,6 +494,7 @@ class Fit_Everything:
             self.Exponential_2P_BIC = self.__Exponential_2P_params.BIC
             self.Exponential_2P_AICc = self.__Exponential_2P_params.AICc
             self.Exponential_2P_AD = self.__Exponential_2P_params.AD
+            self.Exponential_2P_optimizer = self.__Exponential_2P_params.optimizer
             self._parametric_CDF_Exponential_2P = (
                 self.__Exponential_2P_params.distribution.CDF(xvals=d, show_plot=False)
             )
@@ -436,6 +504,12 @@ class Fit_Everything:
                     "Alpha": "",
                     "Beta": "",
                     "Gamma": self.Exponential_2P_gamma,
+                    "Alpha 1": "",
+                    "Beta 1": "",
+                    "Alpha 2": "",
+                    "Beta 2": "",
+                    "Proportion 1": "",
+                    "DS": "",
                     "Mu": "",
                     "Sigma": "",
                     "Lambda": self.Exponential_2P_lambda,
@@ -443,6 +517,7 @@ class Fit_Everything:
                     "AICc": self.Exponential_2P_AICc,
                     "BIC": self.Exponential_2P_BIC,
                     "AD": self.Exponential_2P_AD,
+                    "optimizer": self.Exponential_2P_optimizer,
                 },
                 ignore_index=True,
             )
@@ -463,6 +538,7 @@ class Fit_Everything:
             self.Lognormal_3P_BIC = self.__Lognormal_3P_params.BIC
             self.Lognormal_3P_AICc = self.__Lognormal_3P_params.AICc
             self.Lognormal_3P_AD = self.__Lognormal_3P_params.AD
+            self.Lognormal_3P_optimizer = self.__Lognormal_3P_params.optimizer
             self._parametric_CDF_Lognormal_3P = (
                 self.__Lognormal_3P_params.distribution.CDF(xvals=d, show_plot=False)
             )
@@ -472,6 +548,12 @@ class Fit_Everything:
                     "Alpha": "",
                     "Beta": "",
                     "Gamma": self.Lognormal_3P_gamma,
+                    "Alpha 1": "",
+                    "Beta 1": "",
+                    "Alpha 2": "",
+                    "Beta 2": "",
+                    "Proportion 1": "",
+                    "DS": "",
                     "Mu": self.Lognormal_3P_mu,
                     "Sigma": self.Lognormal_3P_sigma,
                     "Lambda": "",
@@ -479,6 +561,7 @@ class Fit_Everything:
                     "AICc": self.Lognormal_3P_AICc,
                     "BIC": self.Lognormal_3P_BIC,
                     "AD": self.Lognormal_3P_AD,
+                    "optimizer": self.Lognormal_3P_optimizer,
                 },
                 ignore_index=True,
             )
@@ -498,6 +581,7 @@ class Fit_Everything:
             self.Normal_2P_BIC = self.__Normal_2P_params.BIC
             self.Normal_2P_AICc = self.__Normal_2P_params.AICc
             self.Normal_2P_AD = self.__Normal_2P_params.AD
+            self.Normal_2P_optimizer = self.__Normal_2P_params.optimizer
             self._parametric_CDF_Normal_2P = self.__Normal_2P_params.distribution.CDF(
                 xvals=d, show_plot=False
             )
@@ -507,6 +591,12 @@ class Fit_Everything:
                     "Alpha": "",
                     "Beta": "",
                     "Gamma": "",
+                    "Alpha 1": "",
+                    "Beta 1": "",
+                    "Alpha 2": "",
+                    "Beta 2": "",
+                    "Proportion 1": "",
+                    "DS": "",
                     "Mu": self.Normal_2P_mu,
                     "Sigma": self.Normal_2P_sigma,
                     "Lambda": "",
@@ -514,6 +604,7 @@ class Fit_Everything:
                     "AICc": self.Normal_2P_AICc,
                     "BIC": self.Normal_2P_BIC,
                     "AD": self.Normal_2P_AD,
+                    "optimizer": self.Normal_2P_optimizer,
                 },
                 ignore_index=True,
             )
@@ -534,6 +625,7 @@ class Fit_Everything:
             self.Lognormal_2P_BIC = self.__Lognormal_2P_params.BIC
             self.Lognormal_2P_AICc = self.__Lognormal_2P_params.AICc
             self.Lognormal_2P_AD = self.__Lognormal_2P_params.AD
+            self.Lognormal_2P_optimizer = self.__Lognormal_2P_params.optimizer
             self._parametric_CDF_Lognormal_2P = (
                 self.__Lognormal_2P_params.distribution.CDF(xvals=d, show_plot=False)
             )
@@ -543,6 +635,12 @@ class Fit_Everything:
                     "Alpha": "",
                     "Beta": "",
                     "Gamma": "",
+                    "Alpha 1": "",
+                    "Beta 1": "",
+                    "Alpha 2": "",
+                    "Beta 2": "",
+                    "Proportion 1": "",
+                    "DS": "",
                     "Mu": self.Lognormal_2P_mu,
                     "Sigma": self.Lognormal_2P_sigma,
                     "Lambda": "",
@@ -550,6 +648,7 @@ class Fit_Everything:
                     "AICc": self.Lognormal_2P_AICc,
                     "BIC": self.Lognormal_2P_BIC,
                     "AD": self.Lognormal_2P_AD,
+                    "optimizer": self.Lognormal_2P_optimizer,
                 },
                 ignore_index=True,
             )
@@ -569,6 +668,7 @@ class Fit_Everything:
             self.Gumbel_2P_BIC = self.__Gumbel_2P_params.BIC
             self.Gumbel_2P_AICc = self.__Gumbel_2P_params.AICc
             self.Gumbel_2P_AD = self.__Gumbel_2P_params.AD
+            self.Gumbel_2P_optimizer = self.__Gumbel_2P_params.optimizer
             self._parametric_CDF_Gumbel_2P = self.__Gumbel_2P_params.distribution.CDF(
                 xvals=d, show_plot=False
             )
@@ -578,6 +678,12 @@ class Fit_Everything:
                     "Alpha": "",
                     "Beta": "",
                     "Gamma": "",
+                    "Alpha 1": "",
+                    "Beta 1": "",
+                    "Alpha 2": "",
+                    "Beta 2": "",
+                    "Proportion 1": "",
+                    "DS": "",
                     "Mu": self.Gumbel_2P_mu,
                     "Sigma": self.Gumbel_2P_sigma,
                     "Lambda": "",
@@ -585,6 +691,7 @@ class Fit_Everything:
                     "AICc": self.Gumbel_2P_AICc,
                     "BIC": self.Gumbel_2P_BIC,
                     "AD": self.Gumbel_2P_AD,
+                    "optimizer": self.Gumbel_2P_optimizer,
                 },
                 ignore_index=True,
             )
@@ -605,6 +712,7 @@ class Fit_Everything:
             self.Weibull_2P_BIC = self.__Weibull_2P_params.BIC
             self.Weibull_2P_AICc = self.__Weibull_2P_params.AICc
             self.Weibull_2P_AD = self.__Weibull_2P_params.AD
+            self.Weibull_2P_optimizer = self.__Weibull_2P_params.optimizer
             self._parametric_CDF_Weibull_2P = self.__Weibull_2P_params.distribution.CDF(
                 xvals=d, show_plot=False
             )
@@ -614,6 +722,12 @@ class Fit_Everything:
                     "Alpha": self.Weibull_2P_alpha,
                     "Beta": self.Weibull_2P_beta,
                     "Gamma": "",
+                    "Alpha 1": "",
+                    "Beta 1": "",
+                    "Alpha 2": "",
+                    "Beta 2": "",
+                    "Proportion 1": "",
+                    "DS": "",
                     "Mu": "",
                     "Sigma": "",
                     "Lambda": "",
@@ -621,6 +735,144 @@ class Fit_Everything:
                     "AICc": self.Weibull_2P_AICc,
                     "BIC": self.Weibull_2P_BIC,
                     "AD": self.Weibull_2P_AD,
+                    "optimizer": self.Weibull_2P_optimizer,
+                },
+                ignore_index=True,
+            )
+
+        if "Weibull_Mixture" not in self.excluded_distributions:
+            self.__Weibull_Mixture_params = Fit_Weibull_Mixture(
+                failures=failures,
+                right_censored=right_censored,
+                method=method,
+                optimizer=optimizer,
+                show_probability_plot=False,
+                print_results=False,
+            )
+            self.Weibull_Mixture_alpha_1 = self.__Weibull_Mixture_params.alpha_1
+            self.Weibull_Mixture_beta_1 = self.__Weibull_Mixture_params.beta_1
+            self.Weibull_Mixture_alpha_2 = self.__Weibull_Mixture_params.alpha_2
+            self.Weibull_Mixture_beta_2 = self.__Weibull_Mixture_params.beta_2
+            self.Weibull_Mixture_proportion_1 = (
+                self.__Weibull_Mixture_params.proportion_1
+            )
+            self.Weibull_Mixture_loglik = self.__Weibull_Mixture_params.loglik
+            self.Weibull_Mixture_BIC = self.__Weibull_Mixture_params.BIC
+            self.Weibull_Mixture_AICc = self.__Weibull_Mixture_params.AICc
+            self.Weibull_Mixture_AD = self.__Weibull_Mixture_params.AD
+            self.Weibull_Mixture_optimizer = self.__Weibull_Mixture_params.optimizer
+            self._parametric_CDF_Weibull_Mixture = (
+                self.__Weibull_Mixture_params.distribution.CDF(xvals=d, show_plot=False)
+            )
+            df = df.append(
+                {
+                    "Distribution": "Weibull_Mixture",
+                    "Alpha": "",
+                    "Beta": "",
+                    "Gamma": "",
+                    "Alpha 1": self.Weibull_Mixture_alpha_1,
+                    "Beta 1": self.Weibull_Mixture_beta_1,
+                    "Alpha 2": self.Weibull_Mixture_alpha_2,
+                    "Beta 2": self.Weibull_Mixture_beta_2,
+                    "Proportion 1": self.Weibull_Mixture_proportion_1,
+                    "DS": "",
+                    "Mu": "",
+                    "Sigma": "",
+                    "Lambda": "",
+                    "Log-likelihood": self.Weibull_Mixture_loglik,
+                    "AICc": self.Weibull_Mixture_AICc,
+                    "BIC": self.Weibull_Mixture_BIC,
+                    "AD": self.Weibull_Mixture_AD,
+                    "optimizer": self.Weibull_Mixture_optimizer,
+                },
+                ignore_index=True,
+            )
+
+        if "Weibull_CR" not in self.excluded_distributions:
+            self.__Weibull_CR_params = Fit_Weibull_CR(
+                failures=failures,
+                right_censored=right_censored,
+                method=method,
+                optimizer=optimizer,
+                show_probability_plot=False,
+                print_results=False,
+            )
+            self.Weibull_CR_alpha_1 = self.__Weibull_CR_params.alpha_1
+            self.Weibull_CR_beta_1 = self.__Weibull_CR_params.beta_1
+            self.Weibull_CR_alpha_2 = self.__Weibull_CR_params.alpha_2
+            self.Weibull_CR_beta_2 = self.__Weibull_CR_params.beta_2
+            self.Weibull_CR_loglik = self.__Weibull_CR_params.loglik
+            self.Weibull_CR_BIC = self.__Weibull_CR_params.BIC
+            self.Weibull_CR_AICc = self.__Weibull_CR_params.AICc
+            self.Weibull_CR_AD = self.__Weibull_CR_params.AD
+            self.Weibull_CR_optimizer = self.__Weibull_CR_params.optimizer
+            self._parametric_CDF_Weibull_CR = self.__Weibull_CR_params.distribution.CDF(
+                xvals=d, show_plot=False
+            )
+            df = df.append(
+                {
+                    "Distribution": "Weibull_CR",
+                    "Alpha": "",
+                    "Beta": "",
+                    "Gamma": "",
+                    "Alpha 1": self.Weibull_CR_alpha_1,
+                    "Beta 1": self.Weibull_CR_beta_1,
+                    "Alpha 2": self.Weibull_CR_alpha_2,
+                    "Beta 2": self.Weibull_CR_beta_2,
+                    "Proportion 1": "",
+                    "DS": "",
+                    "Mu": "",
+                    "Sigma": "",
+                    "Lambda": "",
+                    "Log-likelihood": self.Weibull_CR_loglik,
+                    "AICc": self.Weibull_CR_AICc,
+                    "BIC": self.Weibull_CR_BIC,
+                    "AD": self.Weibull_CR_AD,
+                    "optimizer": self.Weibull_CR_optimizer,
+                },
+                ignore_index=True,
+            )
+
+        if "Weibull_DS" not in self.excluded_distributions:
+            self.__Weibull_DS_params = Fit_Weibull_DS(
+                failures=failures,
+                right_censored=right_censored,
+                method=method,
+                optimizer=optimizer,
+                show_probability_plot=False,
+                print_results=False,
+            )
+            self.Weibull_DS_alpha = self.__Weibull_DS_params.alpha
+            self.Weibull_DS_beta = self.__Weibull_DS_params.beta
+            self.Weibull_DS_DS = self.__Weibull_DS_params.DS
+            self.Weibull_DS_loglik = self.__Weibull_DS_params.loglik
+            self.Weibull_DS_BIC = self.__Weibull_DS_params.BIC
+            self.Weibull_DS_AICc = self.__Weibull_DS_params.AICc
+            self.Weibull_DS_AD = self.__Weibull_DS_params.AD
+            self.Weibull_DS_optimizer = self.__Weibull_DS_params.optimizer
+            self._parametric_CDF_Weibull_DS = self.__Weibull_DS_params.distribution.CDF(
+                xvals=d, show_plot=False
+            )
+            df = df.append(
+                {
+                    "Distribution": "Weibull_DS",
+                    "Alpha": self.Weibull_DS_alpha,
+                    "Beta": self.Weibull_DS_beta,
+                    "Gamma": "",
+                    "Alpha 1": "",
+                    "Beta 1": "",
+                    "Alpha 2": "",
+                    "Beta 2": "",
+                    "Proportion 1": "",
+                    "DS": self.Weibull_DS_DS,
+                    "Mu": "",
+                    "Sigma": "",
+                    "Lambda": "",
+                    "Log-likelihood": self.Weibull_DS_loglik,
+                    "AICc": self.Weibull_DS_AICc,
+                    "BIC": self.Weibull_DS_BIC,
+                    "AD": self.Weibull_DS_AD,
+                    "optimizer": self.Weibull_DS_optimizer,
                 },
                 ignore_index=True,
             )
@@ -642,6 +894,7 @@ class Fit_Everything:
             self.Gamma_2P_BIC = self.__Gamma_2P_params.BIC
             self.Gamma_2P_AICc = self.__Gamma_2P_params.AICc
             self.Gamma_2P_AD = self.__Gamma_2P_params.AD
+            self.Gamma_2P_optimizer = self.__Gamma_2P_params.optimizer
             self._parametric_CDF_Gamma_2P = self.__Gamma_2P_params.distribution.CDF(
                 xvals=d, show_plot=False
             )
@@ -651,6 +904,12 @@ class Fit_Everything:
                     "Alpha": self.Gamma_2P_alpha,
                     "Beta": self.Gamma_2P_beta,
                     "Gamma": "",
+                    "Alpha 1": "",
+                    "Beta 1": "",
+                    "Alpha 2": "",
+                    "Beta 2": "",
+                    "Proportion 1": "",
+                    "DS": "",
                     "Mu": "",
                     "Sigma": "",
                     "Lambda": "",
@@ -658,6 +917,7 @@ class Fit_Everything:
                     "AICc": self.Gamma_2P_AICc,
                     "BIC": self.Gamma_2P_BIC,
                     "AD": self.Gamma_2P_AD,
+                    "optimizer": self.Gamma_2P_optimizer,
                 },
                 ignore_index=True,
             )
@@ -677,6 +937,7 @@ class Fit_Everything:
             self.Exponential_1P_BIC = self.__Exponential_1P_params.BIC
             self.Exponential_1P_AICc = self.__Exponential_1P_params.AICc
             self.Exponential_1P_AD = self.__Exponential_1P_params.AD
+            self.Exponential_1P_optimizer = self.__Exponential_1P_params.optimizer
             self._parametric_CDF_Exponential_1P = (
                 self.__Exponential_1P_params.distribution.CDF(xvals=d, show_plot=False)
             )
@@ -686,6 +947,12 @@ class Fit_Everything:
                     "Alpha": "",
                     "Beta": "",
                     "Gamma": "",
+                    "Alpha 1": "",
+                    "Beta 1": "",
+                    "Alpha 2": "",
+                    "Beta 2": "",
+                    "Proportion 1": "",
+                    "DS": "",
                     "Mu": "",
                     "Sigma": "",
                     "Lambda": self.Exponential_1P_lambda,
@@ -693,6 +960,7 @@ class Fit_Everything:
                     "AICc": self.Exponential_1P_AICc,
                     "BIC": self.Exponential_1P_BIC,
                     "AD": self.Exponential_1P_AD,
+                    "optimizer": self.Exponential_1P_optimizer,
                 },
                 ignore_index=True,
             )
@@ -713,6 +981,7 @@ class Fit_Everything:
             self.Loglogistic_2P_BIC = self.__Loglogistic_2P_params.BIC
             self.Loglogistic_2P_AICc = self.__Loglogistic_2P_params.AICc
             self.Loglogistic_2P_AD = self.__Loglogistic_2P_params.AD
+            self.Loglogistic_2P_optimizer = self.__Loglogistic_2P_params.optimizer
             self._parametric_CDF_Loglogistic_2P = (
                 self.__Loglogistic_2P_params.distribution.CDF(xvals=d, show_plot=False)
             )
@@ -722,6 +991,12 @@ class Fit_Everything:
                     "Alpha": self.Loglogistic_2P_alpha,
                     "Beta": self.Loglogistic_2P_beta,
                     "Gamma": "",
+                    "Alpha 1": "",
+                    "Beta 1": "",
+                    "Alpha 2": "",
+                    "Beta 2": "",
+                    "Proportion 1": "",
+                    "DS": "",
                     "Mu": "",
                     "Sigma": "",
                     "Lambda": "",
@@ -729,6 +1004,7 @@ class Fit_Everything:
                     "AICc": self.Loglogistic_2P_AICc,
                     "BIC": self.Loglogistic_2P_BIC,
                     "AD": self.Loglogistic_2P_AD,
+                    "optimizer": self.Loglogistic_2P_optimizer,
                 },
                 ignore_index=True,
             )
@@ -749,6 +1025,7 @@ class Fit_Everything:
             self.Loglogistic_3P_BIC = self.__Loglogistic_3P_params.BIC
             self.Loglogistic_3P_AICc = self.__Loglogistic_3P_params.AICc
             self.Loglogistic_3P_AD = self.__Loglogistic_3P_params.AD
+            self.Loglogistic_3P_optimizer = self.__Loglogistic_3P_params.optimizer
             self._parametric_CDF_Loglogistic_3P = (
                 self.__Loglogistic_3P_params.distribution.CDF(xvals=d, show_plot=False)
             )
@@ -758,6 +1035,12 @@ class Fit_Everything:
                     "Alpha": self.Loglogistic_3P_alpha,
                     "Beta": self.Loglogistic_3P_beta,
                     "Gamma": self.Loglogistic_3P_gamma,
+                    "Alpha 1": "",
+                    "Beta 1": "",
+                    "Alpha 2": "",
+                    "Beta 2": "",
+                    "Proportion 1": "",
+                    "DS": "",
                     "Mu": "",
                     "Sigma": "",
                     "Lambda": "",
@@ -765,6 +1048,7 @@ class Fit_Everything:
                     "AICc": self.Loglogistic_3P_AICc,
                     "BIC": self.Loglogistic_3P_BIC,
                     "AD": self.Loglogistic_3P_AD,
+                    "optimizer": self.Loglogistic_3P_optimizer,
                 },
                 ignore_index=True,
             )
@@ -784,6 +1068,7 @@ class Fit_Everything:
             self.Beta_2P_BIC = self.__Beta_2P_params.BIC
             self.Beta_2P_AICc = self.__Beta_2P_params.AICc
             self.Beta_2P_AD = self.__Beta_2P_params.AD
+            self.Beta_2P_optimizer = self.__Beta_2P_params.optimizer
             self._parametric_CDF_Beta_2P = self.__Beta_2P_params.distribution.CDF(
                 xvals=d, show_plot=False
             )
@@ -793,6 +1078,12 @@ class Fit_Everything:
                     "Alpha": self.Beta_2P_alpha,
                     "Beta": self.Beta_2P_beta,
                     "Gamma": "",
+                    "Alpha 1": "",
+                    "Beta 1": "",
+                    "Alpha 2": "",
+                    "Beta 2": "",
+                    "Proportion 1": "",
+                    "DS": "",
                     "Mu": "",
                     "Sigma": "",
                     "Lambda": "",
@@ -800,6 +1091,7 @@ class Fit_Everything:
                     "AICc": self.Beta_2P_AICc,
                     "BIC": self.Beta_2P_BIC,
                     "AD": self.Beta_2P_AD,
+                    "optimizer": self.Beta_2P_optimizer,
                 },
                 ignore_index=True,
             )
@@ -851,6 +1143,33 @@ class Fit_Everything:
                 beta=self.Weibull_3P_beta,
                 gamma=self.Weibull_3P_gamma,
             )
+        elif best_dist == "Weibull_Mixture":
+            d1 = Weibull_Distribution(
+                alpha=self.Weibull_Mixture_alpha_1, beta=self.Weibull_Mixture_beta_1
+            )
+            d2 = Weibull_Distribution(
+                alpha=self.Weibull_Mixture_alpha_2, beta=self.Weibull_Mixture_beta_2
+            )
+            self.best_distribution = Mixture_Model(
+                distributions=[d1, d2],
+                proportions=[
+                    self.Weibull_Mixture_proportion_1,
+                    1 - self.Weibull_Mixture_proportion_1,
+                ],
+            )
+        elif best_dist == "Weibull_CR":
+            d1 = Weibull_Distribution(
+                alpha=self.Weibull_CR_alpha_1, beta=self.Weibull_CR_beta_1
+            )
+            d2 = Weibull_Distribution(
+                alpha=self.Weibull_CR_alpha_2, beta=self.Weibull_CR_beta_2
+            )
+            self.best_distribution = Competing_Risks_Model(distributions=[d1, d2])
+        if best_dist == "Weibull_DS":
+            d1 = Weibull_Distribution(
+                alpha=self.Weibull_DS_alpha, beta=self.Weibull_DS_beta
+            )
+            self.best_distribution = DSZI_Model(distribution=d1, DS=self.Weibull_DS_DS)
         elif best_dist == "Gamma_2P":
             self.best_distribution = Gamma_Distribution(
                 alpha=self.Gamma_2P_alpha, beta=self.Gamma_2P_beta
@@ -916,19 +1235,19 @@ class Fit_Everything:
             print(self.results.to_string(index=False), "\n")
 
         if show_histogram_plot is True:
-            # plotting occurs by default
+            # plotting enabled by default
             Fit_Everything.__histogram_plot(self)
 
         if show_PP_plot is True:
-            # plotting occurs by default
+            # plotting enabled by default
             Fit_Everything.__P_P_plot(self)
 
         if show_probability_plot is True:
-            # plotting occurs by default
+            # plotting enabled by default
             Fit_Everything.__probability_plot(self)
 
         if show_best_distribution_probability_plot is True:
-            # plotting occurs by default
+            # plotting enabled by default
             Fit_Everything.__probability_plot(self, best_only=True)
 
         if (
@@ -943,23 +1262,73 @@ class Fit_Everything:
         """
         Internal function to provide layout formatting of the plots.
         """
-        items = len(self.results.index.values)  # number of items that were fitted
-        if items == 13:  # ------------------------ w   , h    w , h
-            cols, rows, figsize, figsizePP = 5, 3, (17.5, 8), (10, 7.5)
+        items = len(self.results.index.values)  # number of items fitted
+        xx1, yy1 = 2.5, 2  # multipliers for easy adjustment of window sizes
+        xx2, yy2 = 0.5, 0.5
+        if items == 16:
+            # figsizes are in (w,h) format using the above multipliers
+            cols, rows, figsize, figsizePP = (
+                6,
+                3,
+                (xx1 * 8, yy1 * 4),
+                (xx2 * 23, yy2 * 15),
+            )
+        elif items in [13, 14, 15]:
+            cols, rows, figsize, figsizePP = (
+                5,
+                3,
+                (xx1 * 7, yy1 * 4),
+                (xx2 * 20, yy2 * 15),
+            )
         elif items in [10, 11, 12]:
-            cols, rows, figsize, figsizePP = 4, 3, (15, 8), (8.5, 7.5)
+            cols, rows, figsize, figsizePP = (
+                4,
+                3,
+                (xx1 * 6, yy1 * 4),
+                (xx2 * 17, yy2 * 15),
+            )
         elif items in [7, 8, 9]:
-            cols, rows, figsize, figsizePP = 3, 3, (12.5, 8), (7, 7.5)
+            cols, rows, figsize, figsizePP = (
+                3,
+                3,
+                (xx1 * 5, yy1 * 4),
+                (xx2 * 14, yy2 * 15),
+            )
         elif items in [5, 6]:
-            cols, rows, figsize, figsizePP = 3, 2, (12.5, 6), (6.5, 5.5)
+            cols, rows, figsize, figsizePP = (
+                3,
+                2,
+                (xx1 * 5, yy1 * 3),
+                (xx2 * 13, yy2 * 11),
+            )
         elif items == 4:
-            cols, rows, figsize, figsizePP = 2, 2, (10, 6), (6, 5.5)
+            cols, rows, figsize, figsizePP = (
+                2,
+                2,
+                (xx1 * 4, yy1 * 3),
+                (xx2 * 12, yy2 * 11),
+            )
         elif items == 3:
-            cols, rows, figsize, figsizePP = 3, 1, (12.5, 5), (10, 4)
+            cols, rows, figsize, figsizePP = (
+                3,
+                1,
+                (xx1 * 5, yy1 * 2.5),
+                (xx2 * 20, yy2 * 8),
+            )
         elif items == 2:
-            cols, rows, figsize, figsizePP = 2, 1, (10, 4), (6, 4)
+            cols, rows, figsize, figsizePP = (
+                2,
+                1,
+                (xx1 * 4, yy1 * 2),
+                (xx2 * 12, yy2 * 8),
+            )
         elif items == 1:
-            cols, rows, figsize, figsizePP = 1, 1, (7.5, 4), (6, 4)
+            cols, rows, figsize, figsizePP = (
+                1,
+                1,
+                (xx1 * 3, yy1 * 2),
+                (xx2 * 12, yy2 * 8),
+            )
         return cols, rows, figsize, figsizePP
 
     def __histogram_plot(self):
@@ -968,32 +1337,24 @@ class Fit_Everything:
         """
         X = self.failures
         # define plotting limits
-        delta = max(X) - min(X)
         xmin = 0
-        if max(X) <= 1:
-            xmax = 1  # this is the case when beta is fitted
-        else:
-            xmax = (
-                max(X) + delta
-            )  # this is when beta is not fitted so the upper xlim goes a bit more
+        xmax = max(X) * 1.2
 
-        plt.figure(figsize=(14, 6))
-        # we need to make the histogram manually (can't use plt.hist) due to need to scale the heights when there's censored data
-        plotting_order = self.results[
-            "Distribution"
-        ].values  # this is the order to plot things so that the legend matches the results dataframe
+        plt.figure(figsize=(12, 6))
+        # this is the order to plot things so that the legend matches the results dataframe
+        plotting_order = self.results["Distribution"].values
         iqr = np.subtract(*np.percentile(X, [75, 25]))  # interquartile range
-        bin_width = (
-            2 * iqr * len(X) ** -(1 / 3)
-        )  # Freedman–Diaconis rule ==> https://en.wikipedia.org/wiki/Freedman%E2%80%93Diaconis_rule
+        # Freedman–Diaconis rule ==> https://en.wikipedia.org/wiki/Freedman%E2%80%93Diaconis_rule
+        bin_width = 2 * iqr * len(X) ** -(1 / 3)
         num_bins = int(np.ceil((max(X) - min(X)) / bin_width))
+        # we need to make the histogram manually (can't use plt.hist) due to need to scale the heights when there's censored data
         hist, bins = np.histogram(X, bins=num_bins, density=True)
         hist_cumulative = np.cumsum(hist) / sum(hist)
         width = np.diff(bins)
         center = (bins[:-1] + bins[1:]) / 2
 
         # Probability Density Functions
-        plt.subplot(121)
+        plt.subplot(132)
         plt.bar(
             center,
             hist * self._frac_fail,
@@ -1003,153 +1364,160 @@ class Fit_Everything:
             edgecolor="k",
             linewidth=0.5,
         )
+        counter = 0
+        ls = "-"
         for item in plotting_order:
+            counter += 1
+            if counter > 10:
+                ls = "--"
             if item == "Weibull_2P":
-                Weibull_Distribution(
-                    alpha=self.Weibull_2P_alpha, beta=self.Weibull_2P_beta
-                ).PDF(label=r"Weibull ($\alpha , \beta$)")
+                self.__Weibull_2P_params.distribution.PDF(
+                    label=r"Weibull_2P ($\alpha , \beta$)", linestyle=ls
+                )
             elif item == "Weibull_3P":
-                Weibull_Distribution(
-                    alpha=self.Weibull_3P_alpha,
-                    beta=self.Weibull_3P_beta,
-                    gamma=self.Weibull_3P_gamma,
-                ).PDF(label=r"Weibull ($\alpha , \beta , \gamma$)")
+                self.__Weibull_3P_params.distribution.PDF(
+                    label=r"Weibull_3P ($\alpha , \beta , \gamma$)", linestyle=ls
+                )
+            elif item == "Weibull_Mixture":
+                self.__Weibull_Mixture_params.distribution.PDF(
+                    label=r"Weibull_Mixture ($\alpha_1 , \beta_1 , \alpha_2 , \beta_2 , p_1$)",
+                    linestyle=ls,
+                    xmax=xmax * 2,
+                )
+            elif item == "Weibull_CR":
+                self.__Weibull_CR_params.distribution.PDF(
+                    label=r"Weibull_CR ($\alpha_1 , \beta_1 , \alpha_2 , \beta_2$)",
+                    linestyle=ls,
+                    xmax=xmax * 2,
+                )
+            elif item == "Weibull_DS":
+                self.__Weibull_DS_params.distribution.PDF(
+                    label=r"Weibull_DS ($\alpha , \beta , DS$)",
+                    linestyle=ls,
+                    xmax=xmax * 2,
+                )
             elif item == "Gamma_2P":
-                Gamma_Distribution(
-                    alpha=self.Gamma_2P_alpha, beta=self.Gamma_2P_beta
-                ).PDF(label=r"Gamma ($\alpha , \beta$)")
+                self.__Gamma_2P_params.distribution.PDF(
+                    label=r"Gamma_2P ($\alpha , \beta$)", linestyle=ls
+                )
             elif item == "Gamma_3P":
-                Gamma_Distribution(
-                    alpha=self.Gamma_3P_alpha,
-                    beta=self.Gamma_3P_beta,
-                    gamma=self.Gamma_3P_gamma,
-                ).PDF(label=r"Gamma ($\alpha , \beta , \gamma$)")
+                self.__Gamma_3P_params.distribution.PDF(
+                    label=r"Gamma_3P ($\alpha , \beta , \gamma$)", linestyle=ls
+                )
             elif item == "Exponential_1P":
-                Exponential_Distribution(Lambda=self.Exponential_1P_lambda).PDF(
-                    label=r"Exponential ($\lambda$)"
+                self.__Exponential_1P_params.distribution.PDF(
+                    label=r"Exponential_1P ($\lambda$)", linestyle=ls
                 )
             elif item == "Exponential_2P":
-                Exponential_Distribution(
-                    Lambda=self.Exponential_2P_lambda, gamma=self.Exponential_2P_gamma
-                ).PDF(label=r"Exponential ($\lambda , \gamma$)")
-            elif item == "Lognormal_2P":
-                Lognormal_Distribution(
-                    mu=self.Lognormal_2P_mu, sigma=self.Lognormal_2P_sigma
-                ).PDF(label=r"Lognormal ($\mu , \sigma$)")
-            elif item == "Lognormal_3P":
-                Lognormal_Distribution(
-                    mu=self.Lognormal_3P_mu,
-                    sigma=self.Lognormal_3P_sigma,
-                    gamma=self.Lognormal_3P_gamma,
-                ).PDF(label=r"Lognormal ($\mu , \sigma , \gamma$)")
-            elif item == "Normal_2P":
-                Normal_Distribution(
-                    mu=self.Normal_2P_mu, sigma=self.Normal_2P_sigma
-                ).PDF(label=r"Normal ($\mu , \sigma$)")
-            elif item == "Gumbel_2P":
-                Gumbel_Distribution(
-                    mu=self.Gumbel_2P_mu, sigma=self.Gumbel_2P_sigma
-                ).PDF(label=r"Gumbel ($\mu , \sigma$)")
-            elif item == "Loglogistic_2P":
-                Loglogistic_Distribution(
-                    alpha=self.Loglogistic_2P_alpha, beta=self.Loglogistic_2P_beta
-                ).PDF(label=r"Loglogistic ($\alpha , \beta$)")
-            elif item == "Loglogistic_3P":
-                Loglogistic_Distribution(
-                    alpha=self.Loglogistic_3P_alpha,
-                    beta=self.Loglogistic_3P_beta,
-                    gamma=self.Loglogistic_3P_gamma,
-                ).PDF(label=r"Loglogistic ($\alpha , \beta, \gamma$)")
-            elif item == "Beta_2P":
-                Beta_Distribution(alpha=self.Beta_2P_alpha, beta=self.Beta_2P_beta).PDF(
-                    label=r"Beta ($\alpha , \beta$)"
+                self.__Exponential_2P_params.distribution.PDF(
+                    label=r"Exponential_2P ($\lambda , \gamma$)", linestyle=ls
                 )
+            elif item == "Lognormal_2P":
+                self.__Lognormal_2P_params.distribution.PDF(
+                    label=r"Lognormal_2P ($\mu , \sigma$)", linestyle=ls
+                )
+            elif item == "Lognormal_3P":
+                self.__Lognormal_3P_params.distribution.PDF(
+                    label=r"Lognormal_3P ($\mu , \sigma , \gamma$)", linestyle=ls
+                )
+            elif item == "Normal_2P":
+                self.__Normal_2P_params.distribution.PDF(
+                    label=r"Normal_2P ($\mu , \sigma$)", linestyle=ls
+                )
+            elif item == "Gumbel_2P":
+                self.__Gumbel_2P_params.distribution.PDF(
+                    label=r"Gumbel_2P ($\mu , \sigma$)", linestyle=ls
+                )
+            elif item == "Loglogistic_2P":
+                self.__Loglogistic_2P_params.distribution.PDF(
+                    label=r"Loglogistic_2P ($\alpha , \beta$)", linestyle=ls
+                )
+            elif item == "Loglogistic_3P":
+                self.__Loglogistic_3P_params.distribution.PDF(
+                    label=r"Loglogistic_3P ($\alpha , \beta , \gamma$)", linestyle=ls
+                )
+            elif item == "Beta_2P":
+                self.__Beta_2P_params.distribution.PDF(
+                    label=r"Beta_2P ($\alpha , \beta$)", linestyle=ls
+                )
+        handles, labels = plt.gca().get_legend_handles_labels()
+        lgd = plt.gca().legend(
+            handles,
+            labels,
+            loc="upper left",
+            bbox_to_anchor=(-1.1, 1),
+            frameon=False,
+            title="Distribution Fitted\n",
+        )
+        lgd._legend_box.align = "left"
         plt.xlim(xmin, xmax)
-        plt.ylim(0, max(hist) * 1.5)
+        plt.ylim(0, max(hist * self._frac_fail) * 1.2)
         plt.title("Probability Density Function")
         plt.xlabel("Data")
         plt.ylabel("Probability density")
-        plt.legend()
 
         # Cumulative Distribution Functions
-        plt.subplot(122)
+        plt.subplot(133)
+        _, ecdf_y = plotting_positions(
+            failures=self.failures, right_censored=self.right_censored
+        )
         plt.bar(
             center,
-            hist_cumulative * self._frac_fail,
+            hist_cumulative * max(ecdf_y),
             align="center",
             width=width,
             color="lightgrey",
             edgecolor="k",
             linewidth=0.5,
         )
+
+        counter = 0
+        ls = "-"
         for item in plotting_order:
+            counter += 1
+            if counter > 10:
+                ls = "--"
             if item == "Weibull_2P":
-                Weibull_Distribution(
-                    alpha=self.Weibull_2P_alpha, beta=self.Weibull_2P_beta
-                ).CDF(label=r"Weibull ($\alpha , \beta$)")
+                self.__Weibull_2P_params.distribution.CDF(CI=False, linestyle=ls)
             elif item == "Weibull_3P":
-                Weibull_Distribution(
-                    alpha=self.Weibull_3P_alpha,
-                    beta=self.Weibull_3P_beta,
-                    gamma=self.Weibull_3P_gamma,
-                ).CDF(label=r"Weibull ($\alpha , \beta , \gamma$)")
+                self.__Weibull_3P_params.distribution.CDF(CI=False, linestyle=ls)
+            elif item == "Weibull_Mixture":
+                self.__Weibull_Mixture_params.distribution.CDF(
+                    linestyle=ls, xmax=xmax * 2
+                )
+            elif item == "Weibull_CR":
+                self.__Weibull_CR_params.distribution.CDF(linestyle=ls, xmax=xmax * 2)
+            elif item == "Weibull_DS":
+                self.__Weibull_DS_params.distribution.CDF(linestyle=ls, xmax=xmax * 2)
             elif item == "Gamma_2P":
-                Gamma_Distribution(
-                    alpha=self.Gamma_2P_alpha, beta=self.Gamma_2P_beta
-                ).CDF(label=r"Gamma ($\alpha , \beta$)")
+                self.__Gamma_2P_params.distribution.CDF(CI=False, linestyle=ls)
             elif item == "Gamma_3P":
-                Gamma_Distribution(
-                    alpha=self.Gamma_3P_alpha,
-                    beta=self.Gamma_3P_beta,
-                    gamma=self.Gamma_3P_gamma,
-                ).CDF(label=r"Gamma ($\alpha , \beta , \gamma$)")
+                self.__Gamma_3P_params.distribution.CDF(CI=False, linestyle=ls)
             elif item == "Exponential_1P":
-                Exponential_Distribution(Lambda=self.Exponential_1P_lambda).CDF(
-                    label=r"Exponential ($\lambda$)"
-                )
+                self.__Exponential_1P_params.distribution.CDF(CI=False, linestyle=ls)
             elif item == "Exponential_2P":
-                Exponential_Distribution(
-                    Lambda=self.Exponential_2P_lambda, gamma=self.Exponential_2P_gamma
-                ).CDF(label=r"Exponential ($\lambda , \gamma$)")
+                self.__Exponential_2P_params.distribution.CDF(CI=False, linestyle=ls)
             elif item == "Lognormal_2P":
-                Lognormal_Distribution(
-                    mu=self.Lognormal_2P_mu, sigma=self.Lognormal_2P_sigma
-                ).CDF(label=r"Lognormal ($\mu , \sigma$)")
+                self.__Lognormal_2P_params.distribution.CDF(CI=False, linestyle=ls)
             elif item == "Lognormal_3P":
-                Lognormal_Distribution(
-                    mu=self.Lognormal_3P_mu,
-                    sigma=self.Lognormal_3P_sigma,
-                    gamma=self.Lognormal_3P_gamma,
-                ).CDF(label=r"Lognormal ($\mu , \sigma , \gamma$)")
+                self.__Lognormal_3P_params.distribution.CDF(CI=False, linestyle=ls)
             elif item == "Normal_2P":
-                Normal_Distribution(
-                    mu=self.Normal_2P_mu, sigma=self.Normal_2P_sigma
-                ).CDF(label=r"Normal ($\mu , \sigma$)")
+                self.__Normal_2P_params.distribution.CDF(CI=False, linestyle=ls)
             elif item == "Gumbel_2P":
-                Gumbel_Distribution(
-                    mu=self.Gumbel_2P_mu, sigma=self.Gumbel_2P_sigma
-                ).CDF(label=r"Gumbel ($\mu , \sigma$)")
+                self.__Gumbel_2P_params.distribution.CDF(CI=False, linestyle=ls)
             elif item == "Loglogistic_2P":
-                Loglogistic_Distribution(
-                    alpha=self.Loglogistic_2P_alpha, beta=self.Loglogistic_2P_beta
-                ).CDF(label=r"Loglogistic ($\alpha , \beta$)")
+                self.__Loglogistic_2P_params.distribution.CDF(CI=False, linestyle=ls)
             elif item == "Loglogistic_3P":
-                Loglogistic_Distribution(
-                    alpha=self.Loglogistic_3P_alpha,
-                    beta=self.Loglogistic_3P_beta,
-                    gamma=self.Loglogistic_3P_gamma,
-                ).CDF(label=r"Loglogistic ($\alpha , \beta, \gamma$)")
+                self.__Loglogistic_3P_params.distribution.CDF(CI=False, linestyle=ls)
             elif item == "Beta_2P":
-                Beta_Distribution(alpha=self.Beta_2P_alpha, beta=self.Beta_2P_beta).CDF(
-                    label=r"Beta ($\alpha , \beta$)"
-                )
-        plt.xlim([xmin, xmax])
+                self.__Beta_2P_params.distribution.CDF(linestyle=ls)
+        plt.xlim(xmin, xmax)
+        plt.ylim(0, max(ecdf_y) * 1.2)
         plt.title("Cumulative Distribution Function")
         plt.xlabel("Data")
         plt.ylabel("Cumulative probability density")
-        plt.legend()
         plt.suptitle("Histogram plot of each fitted distribution")
-        plt.subplots_adjust(left=0.07, bottom=0.10, right=0.97, top=0.88, wspace=0.15)
+        plt.subplots_adjust(left=0, bottom=0.10, right=0.97, top=0.88, wspace=0.18)
 
     def __P_P_plot(self):
         """
@@ -1166,9 +1534,8 @@ class Fit_Everything:
         nonparametric_CDF = 1 - nonparametric.KM  # change SF into CDF
 
         cols, rows, _, figsizePP = Fit_Everything.__probplot_layout(self)
-        plotting_order = self.results[
-            "Distribution"
-        ].values  # this is the order to plot things which matches the results dataframe
+        # this is the order to plot things which matches the results dataframe
+        plotting_order = self.results["Distribution"].values
         plt.figure(figsize=figsizePP)
         plt.suptitle(
             "Semi-parametric Probability-Probability plots of each fitted distribution\nParametric (x-axis) vs Non-Parametric (y-axis)\n"
@@ -1176,145 +1543,103 @@ class Fit_Everything:
         subplot_counter = 1
         for item in plotting_order:
             plt.subplot(rows, cols, subplot_counter)
+
+            xx = nonparametric_CDF
+            plotlim = max(xx)
             if item == "Exponential_1P":
-                xlim = max(
-                    np.hstack([nonparametric_CDF, self._parametric_CDF_Exponential_1P])
-                )
-                plt.scatter(
-                    nonparametric_CDF,
-                    self._parametric_CDF_Exponential_1P,
-                    marker=".",
-                    color="k",
-                )
+                yy = self._parametric_CDF_Exponential_1P
+                max_yy = max(yy)
+                if max_yy > plotlim:
+                    plotlim = max_yy
             elif item == "Exponential_2P":
-                xlim = max(
-                    np.hstack([nonparametric_CDF, self._parametric_CDF_Exponential_2P])
-                )
-                plt.scatter(
-                    nonparametric_CDF,
-                    self._parametric_CDF_Exponential_2P,
-                    marker=".",
-                    color="k",
-                )
+                yy = self._parametric_CDF_Exponential_2P
+                max_yy = max(yy)
+                if max_yy > plotlim:
+                    plotlim = max_yy
             elif item == "Lognormal_2P":
-                xlim = max(
-                    np.hstack([nonparametric_CDF, self._parametric_CDF_Lognormal_2P])
-                )
-                plt.scatter(
-                    nonparametric_CDF,
-                    self._parametric_CDF_Lognormal_2P,
-                    marker=".",
-                    color="k",
-                )
+                yy = self._parametric_CDF_Lognormal_2P
+                max_yy = max(yy)
+                if max_yy > plotlim:
+                    plotlim = max_yy
             elif item == "Lognormal_3P":
-                xlim = max(
-                    np.hstack([nonparametric_CDF, self._parametric_CDF_Lognormal_3P])
-                )
-                plt.scatter(
-                    nonparametric_CDF,
-                    self._parametric_CDF_Lognormal_3P,
-                    marker=".",
-                    color="k",
-                )
+                yy = self._parametric_CDF_Lognormal_3P
+                max_yy = max(yy)
+                if max_yy > plotlim:
+                    plotlim = max_yy
             elif item == "Weibull_2P":
-                xlim = max(
-                    np.hstack([nonparametric_CDF, self._parametric_CDF_Weibull_2P])
-                )
-                plt.scatter(
-                    nonparametric_CDF,
-                    self._parametric_CDF_Weibull_2P,
-                    marker=".",
-                    color="k",
-                )
+                yy = self._parametric_CDF_Weibull_2P
+                max_yy = max(yy)
+                if max_yy > plotlim:
+                    plotlim = max_yy
             elif item == "Weibull_3P":
-                xlim = max(
-                    np.hstack([nonparametric_CDF, self._parametric_CDF_Weibull_3P])
-                )
-                plt.scatter(
-                    nonparametric_CDF,
-                    self._parametric_CDF_Weibull_3P,
-                    marker=".",
-                    color="k",
-                )
+                yy = self._parametric_CDF_Weibull_3P
+                max_yy = max(yy)
+                if max_yy > plotlim:
+                    plotlim = max_yy
+            elif item == "Weibull_Mixture":
+                yy = self._parametric_CDF_Weibull_Mixture
+                max_yy = max(yy)
+                if max_yy > plotlim:
+                    plotlim = max_yy
+            elif item == "Weibull_CR":
+                yy = self._parametric_CDF_Weibull_CR
+                max_yy = max(yy)
+                if max_yy > plotlim:
+                    plotlim = max_yy
+            elif item == "Weibull_DS":
+                yy = self._parametric_CDF_Weibull_DS
+                max_yy = max(yy)
+                if max_yy > plotlim:
+                    plotlim = max_yy
             elif item == "Loglogistic_2P":
-                xlim = max(
-                    np.hstack([nonparametric_CDF, self._parametric_CDF_Loglogistic_2P])
-                )
-                plt.scatter(
-                    nonparametric_CDF,
-                    self._parametric_CDF_Loglogistic_2P,
-                    marker=".",
-                    color="k",
-                )
+                yy = self._parametric_CDF_Loglogistic_2P
+                max_yy = max(yy)
+                if max_yy > plotlim:
+                    plotlim = max_yy
             elif item == "Loglogistic_3P":
-                xlim = max(
-                    np.hstack([nonparametric_CDF, self._parametric_CDF_Loglogistic_3P])
-                )
-                plt.scatter(
-                    nonparametric_CDF,
-                    self._parametric_CDF_Loglogistic_3P,
-                    marker=".",
-                    color="k",
-                )
+                yy = self._parametric_CDF_Loglogistic_3P
+                max_yy = max(yy)
+                if max_yy > plotlim:
+                    plotlim = max_yy
             elif item == "Gamma_2P":
-                xlim = max(
-                    np.hstack([nonparametric_CDF, self._parametric_CDF_Gamma_2P])
-                )
-                plt.scatter(
-                    nonparametric_CDF,
-                    self._parametric_CDF_Gamma_2P,
-                    marker=".",
-                    color="k",
-                )
+                yy = self._parametric_CDF_Gamma_2P
+                max_yy = max(yy)
+                if max_yy > plotlim:
+                    plotlim = max_yy
             elif item == "Gamma_3P":
-                xlim = max(
-                    np.hstack([nonparametric_CDF, self._parametric_CDF_Gamma_3P])
-                )
-                plt.scatter(
-                    nonparametric_CDF,
-                    self._parametric_CDF_Gamma_3P,
-                    marker=".",
-                    color="k",
-                )
+                yy = self._parametric_CDF_Gamma_3P
+                max_yy = max(yy)
+                if max_yy > plotlim:
+                    plotlim = max_yy
             elif item == "Normal_2P":
-                xlim = max(
-                    np.hstack([nonparametric_CDF, self._parametric_CDF_Normal_2P])
-                )
-                plt.scatter(
-                    nonparametric_CDF,
-                    self._parametric_CDF_Normal_2P,
-                    marker=".",
-                    color="k",
-                )
+                yy = self._parametric_CDF_Normal_2P
+                max_yy = max(yy)
+                if max_yy > plotlim:
+                    plotlim = max_yy
             elif item == "Gumbel_2P":
-                xlim = max(
-                    np.hstack([nonparametric_CDF, self._parametric_CDF_Gumbel_2P])
-                )
-                plt.scatter(
-                    nonparametric_CDF,
-                    self._parametric_CDF_Gumbel_2P,
-                    marker=".",
-                    color="k",
-                )
+                yy = self._parametric_CDF_Gumbel_2P
+                max_yy = max(yy)
+                if max_yy > plotlim:
+                    plotlim = max_yy
             elif item == "Beta_2P":
-                xlim = max(np.hstack([nonparametric_CDF, self._parametric_CDF_Beta_2P]))
-                plt.scatter(
-                    nonparametric_CDF,
-                    self._parametric_CDF_Beta_2P,
-                    marker=".",
-                    color="k",
-                )
-            else:
-                raise ValueError("unknown item was fitted")
+                yy = self._parametric_CDF_Beta_2P
+                max_yy = max(yy)
+                if max_yy > plotlim:
+                    plotlim = max_yy
+
+            # downsample if necessary
+            x_scatter, y_scatter = xy_downsample(
+                xx, yy, downsample_factor=self.__downsample_scatterplot
+            )
+            # plot the scatterplot
+            plt.scatter(x_scatter, y_scatter, marker=".", color="k")
             plt.title(item)
-            plt.plot(
-                [-xlim, 2 * xlim], [-xlim, 2 * xlim], "r", alpha=0.7
-            )  # red diagonal line
+            plt.plot([-1, 2], [-1, 2], "r", alpha=0.7)  # red diagonal line
             plt.axis("square")
             plt.yticks([])
             plt.xticks([])
-            plt.xlim(-xlim * 0.05, xlim * 1.05)
-            plt.ylim(-xlim * 0.05, xlim * 1.05)
+            plt.xlim(-plotlim * 0.05, plotlim * 1.05)
+            plt.ylim(-plotlim * 0.05, plotlim * 1.05)
             subplot_counter += 1
         plt.tight_layout()
 
@@ -1344,6 +1669,10 @@ class Fit_Everything:
         else:
             plotting_order = [self.results["Distribution"].values[0]]
 
+        # xvals is used by Weibull_Mixture, Weibull_CR, and Weibull_DS
+        xvals = np.logspace(
+            np.log10(min(self.failures)) - 3, np.log10(max(self.failures)) + 1, 1000
+        )
         for item in plotting_order:
             if best_only is False:
                 plt.subplot(rows, cols, subplot_counter)
@@ -1352,81 +1681,120 @@ class Fit_Everything:
                     failures=self.failures,
                     right_censored=self.right_censored,
                     __fitted_dist_params=self.__Exponential_1P_params,
+                    downsample_scatterplot=self.__downsample_scatterplot,
                 )
             elif item == "Exponential_2P":
                 Exponential_probability_plot_Weibull_Scale(
                     failures=self.failures,
                     right_censored=self.right_censored,
                     __fitted_dist_params=self.__Exponential_2P_params,
+                    downsample_scatterplot=self.__downsample_scatterplot,
                 )
             elif item == "Lognormal_2P":
                 Lognormal_probability_plot(
                     failures=self.failures,
                     right_censored=self.right_censored,
                     __fitted_dist_params=self.__Lognormal_2P_params,
+                    downsample_scatterplot=self.__downsample_scatterplot,
                 )
             elif item == "Lognormal_3P":
                 Lognormal_probability_plot(
                     failures=self.failures,
                     right_censored=self.right_censored,
                     __fitted_dist_params=self.__Lognormal_3P_params,
+                    downsample_scatterplot=self.__downsample_scatterplot,
                 )
             elif item == "Weibull_2P":
                 Weibull_probability_plot(
                     failures=self.failures,
                     right_censored=self.right_censored,
                     __fitted_dist_params=self.__Weibull_2P_params,
+                    downsample_scatterplot=self.__downsample_scatterplot,
                 )
             elif item == "Weibull_3P":
                 Weibull_probability_plot(
                     failures=self.failures,
                     right_censored=self.right_censored,
                     __fitted_dist_params=self.__Weibull_3P_params,
+                    downsample_scatterplot=self.__downsample_scatterplot,
                 )
+            elif item == "Weibull_Mixture":
+                Weibull_probability_plot(
+                    failures=self.failures,
+                    right_censored=self.right_censored,
+                    show_fitted_distribution=False,
+                    downsample_scatterplot=self.__downsample_scatterplot,
+                )
+                self.__Weibull_Mixture_params.distribution.CDF(xvals=xvals)
+                # need to add this manually as Weibull_probability_plot can only add Weibull_2P and Weibull_3P using __fitted_dist_params
+            elif item == "Weibull_CR":
+                Weibull_probability_plot(
+                    failures=self.failures,
+                    right_censored=self.right_censored,
+                    show_fitted_distribution=False,
+                    downsample_scatterplot=self.__downsample_scatterplot,
+                )
+                self.__Weibull_CR_params.distribution.CDF(xvals=xvals)
+                # need to add this manually as Weibull_probability_plot can only add Weibull_2P and Weibull_3P using __fitted_dist_params
+            elif item == "Weibull_DS":
+                Weibull_probability_plot(
+                    failures=self.failures,
+                    right_censored=self.right_censored,
+                    show_fitted_distribution=False,
+                    downsample_scatterplot=self.__downsample_scatterplot,
+                )
+                self.__Weibull_DS_params.distribution.CDF(xvals=xvals)
+                # need to add this manually as Weibull_probability_plot can only add Weibull_2P and Weibull_3P using __fitted_dist_params
             elif item == "Loglogistic_2P":
                 Loglogistic_probability_plot(
                     failures=self.failures,
                     right_censored=self.right_censored,
                     __fitted_dist_params=self.__Loglogistic_2P_params,
+                    downsample_scatterplot=self.__downsample_scatterplot,
                 )
             elif item == "Loglogistic_3P":
                 Loglogistic_probability_plot(
                     failures=self.failures,
                     right_censored=self.right_censored,
                     __fitted_dist_params=self.__Loglogistic_3P_params,
+                    downsample_scatterplot=self.__downsample_scatterplot,
                 )
             elif item == "Gamma_2P":
                 Gamma_probability_plot(
                     failures=self.failures,
                     right_censored=self.right_censored,
                     __fitted_dist_params=self.__Gamma_2P_params,
+                    downsample_scatterplot=self.__downsample_scatterplot,
                 )
             elif item == "Gamma_3P":
                 Gamma_probability_plot(
                     failures=self.failures,
                     right_censored=self.right_censored,
                     __fitted_dist_params=self.__Gamma_3P_params,
+                    downsample_scatterplot=self.__downsample_scatterplot,
                 )
             elif item == "Normal_2P":
                 Normal_probability_plot(
                     failures=self.failures,
                     right_censored=self.right_censored,
                     __fitted_dist_params=self.__Normal_2P_params,
+                    downsample_scatterplot=self.__downsample_scatterplot,
                 )
             elif item == "Gumbel_2P":
                 Gumbel_probability_plot(
                     failures=self.failures,
                     right_censored=self.right_censored,
                     __fitted_dist_params=self.__Gumbel_2P_params,
+                    downsample_scatterplot=self.__downsample_scatterplot,
                 )
             elif item == "Beta_2P":
                 Beta_probability_plot(
                     failures=self.failures,
                     right_censored=self.right_censored,
                     __fitted_dist_params=self.__Beta_2P_params,
+                    downsample_scatterplot=self.__downsample_scatterplot,
                 )
-            else:
-                raise ValueError("unknown item was fitted")
+
             if best_only is False:
                 plt.title(item)
                 ax = plt.gca()
@@ -1436,15 +1804,22 @@ class Fit_Everything:
                 ax.set_xticklabels([], minor=True)
                 ax.set_ylabel("")
                 ax.set_xlabel("")
-                ax.get_legend().remove()
+                try:
+                    ax.get_legend().remove()
+                except AttributeError:
+                    pass
+                    # some plots don't have a legend added so this exception ignores them when trying to remove the legend
                 subplot_counter += 1
             else:
-                plt.title(
-                    str(
-                        "Probability plot of best distribution\n"
-                        + self.best_distribution.param_title_long
-                    )
-                )
+                if self.best_distribution_name == "Weibull_Mixture":
+                    title_detail = "Weibull Mixture Model"
+                elif self.best_distribution_name == "Weibull_CR":
+                    title_detail = "Weibull Competing Risks Model"
+                elif self.best_distribution_name == "Weibull_DS":
+                    title_detail = "Weibull Defective Subpopulation Model"
+                else:
+                    title_detail = self.best_distribution.param_title_long
+                plt.title(str("Probability plot of best distribution\n" + title_detail))
         if best_only is False:
             plt.tight_layout()
             plt.gcf().set_size_inches(figsize)
@@ -1472,14 +1847,15 @@ class Fit_Weibull_2P:
         regression on X), or 'RRY' (Rank regression on Y). LS will perform both
         RRX and RRY and return the better one. Default is 'MLE'.
     optimizer : str, optional
-        The optimisation algorithm used to find the solution. Must be either
-        'L-BFGS-B', 'TNC', or 'powell'. These are all bound constrained methods.
-        If the bounded method fails, 'nelder-mead' will be used. If
-        'nelder-mead' fails then the initial guess will be returned with a
-        warning. For more information on these optimizers see
-        https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.minimize.html#scipy.optimize.minimize
-        Default is 'L-BFGS-B' if the data is <= 97% right censored or 'TNC' if
-        the data is > 97% right censored.
+        The optimization algorithm used to find the solution. Must be either
+        'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'. Specifying the optimizer
+        will result in that optimizer being used. To use all of these specify
+        'best' and the best result will be returned. The default behaviour is to
+        try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and
+        'powell') and stop once one of the optimizers finds a solution. If the
+        optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation
+        <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
     CI : float, optional
         confidence interval for estimating confidence limits on parameters. Must
         be between 0 and 1. Default is 0.95 for 95% CI.
@@ -1500,6 +1876,13 @@ class Fit_Weibull_2P:
         If an array or list is specified then it will be used instead of the
         default array. Any array or list specified must contain values between
         0 and 100.
+    downsample_scatterplot : bool, int, optional
+        If True or None, and there are over 1000 points, then the scatterplot
+        will be downsampled by a factor. The default downsample factor will seek
+        to produce between 500 and 1000 points. If a number is specified, it
+        will be used as the downsample factor. Default is True. This
+        functionality makes plotting faster when there are very large numbers of
+        points. It only affects the scatterplot not the calculations.
     kwargs
         Plotting keywords that are passed directly to matplotlib for the
         probability plot (e.g. color, label, linestyle)
@@ -1556,7 +1939,7 @@ class Fit_Weibull_2P:
     If the fitting process encounters a problem a warning will be printed. This
     may be caused by the chosen distribution being a very poor fit to the data
     or the data being heavily censored. If a warning is printed, consider trying
-    a different optimiser.
+    a different optimizer.
     """
 
     def __init__(
@@ -1571,6 +1954,7 @@ class Fit_Weibull_2P:
         method="MLE",
         optimizer=None,
         force_beta=None,
+        downsample_scatterplot=True,
         **kwargs,
     ):
 
@@ -1600,7 +1984,7 @@ class Fit_Weibull_2P:
             LS_method = "LS"
         else:
             LS_method = method
-        LS_results = LS_optimisation(
+        LS_results = LS_optimization(
             func_name="Weibull_2P",
             LL_func=Fit_Weibull_2P.LL,
             failures=failures,
@@ -1615,10 +1999,10 @@ class Fit_Weibull_2P:
             self.alpha = LS_results.guess[0]
             self.beta = LS_results.guess[1]
             self.method = str("Least Squares Estimation (" + LS_results.method + ")")
-
+            self.optimizer = None
         # maximum likelihood method
         elif method == "MLE":
-            MLE_results = MLE_optimisation(
+            MLE_results = MLE_optimization(
                 func_name="Weibull_2P",
                 LL_func=Fit_Weibull_2P.LL,
                 initial_guess=[LS_results.guess[0], LS_results.guess[1]],
@@ -1631,6 +2015,7 @@ class Fit_Weibull_2P:
             self.alpha = MLE_results.scale
             self.beta = MLE_results.shape
             self.method = "Maximum Likelihood Estimation (MLE)"
+            self.optimizer = MLE_results.optimizer
 
         # confidence interval estimates of parameters. This uses the Fisher Matrix so it can be applied to both MLE and LS estimates.
         Z = -ss.norm.ppf((1 - CI) / 2)
@@ -1641,14 +2026,39 @@ class Fit_Weibull_2P:
                 np.array(tuple(failures)),
                 np.array(tuple(right_censored)),
             )
-            covariance_matrix = np.linalg.inv(hessian_matrix)
-            self.alpha_SE = abs(covariance_matrix[0][0]) ** 0.5
-            self.beta_SE = abs(covariance_matrix[1][1]) ** 0.5
-            self.Cov_alpha_beta = covariance_matrix[0][1]
-            self.alpha_upper = self.alpha * (np.exp(Z * (self.alpha_SE / self.alpha)))
-            self.alpha_lower = self.alpha * (np.exp(-Z * (self.alpha_SE / self.alpha)))
-            self.beta_upper = self.beta * (np.exp(Z * (self.beta_SE / self.beta)))
-            self.beta_lower = self.beta * (np.exp(-Z * (self.beta_SE / self.beta)))
+            try:
+                covariance_matrix = np.linalg.inv(hessian_matrix)
+                self.alpha_SE = abs(covariance_matrix[0][0]) ** 0.5
+                self.beta_SE = abs(covariance_matrix[1][1]) ** 0.5
+                self.Cov_alpha_beta = covariance_matrix[0][1]
+                self.alpha_upper = self.alpha * (
+                    np.exp(Z * (self.alpha_SE / self.alpha))
+                )
+                self.alpha_lower = self.alpha * (
+                    np.exp(-Z * (self.alpha_SE / self.alpha))
+                )
+                self.beta_upper = self.beta * (np.exp(Z * (self.beta_SE / self.beta)))
+                self.beta_lower = self.beta * (np.exp(-Z * (self.beta_SE / self.beta)))
+            except LinAlgError:
+                # this exception is rare but can occur with some optimizers
+                colorprint(
+                    str(
+                        "WARNING: The hessian matrix obtained using the "
+                        + self.optimizer
+                        + " optimizer is non-invertable for the Weibull_2P model.\n"
+                        "Confidence interval estimates of the parameters could not be obtained.\n"
+                        "You may want to try fitting the model using a different optimizer."
+                    ),
+                    text_color="red",
+                )
+                self.alpha_SE = 0
+                self.beta_SE = 0
+                self.Cov_alpha_beta = 0
+                self.alpha_upper = self.alpha
+                self.alpha_lower = self.alpha
+                self.beta_upper = self.beta
+                self.beta_lower = self.beta
+
         else:  # this is for when force beta is specified
             hessian_matrix = hessian(Fit_Weibull_2P.LL_fb)(
                 np.array(tuple([self.alpha])),
@@ -1656,14 +2066,38 @@ class Fit_Weibull_2P:
                 np.array(tuple(right_censored)),
                 np.array(tuple([force_beta])),
             )
-            covariance_matrix = np.linalg.inv(hessian_matrix)
-            self.alpha_SE = abs(covariance_matrix[0][0]) ** 0.5
-            self.beta_SE = 0
-            self.Cov_alpha_beta = 0
-            self.alpha_upper = self.alpha * (np.exp(Z * (self.alpha_SE / self.alpha)))
-            self.alpha_lower = self.alpha * (np.exp(-Z * (self.alpha_SE / self.alpha)))
-            self.beta_upper = self.beta
-            self.beta_lower = self.beta
+            try:
+                covariance_matrix = np.linalg.inv(hessian_matrix)
+                self.alpha_SE = abs(covariance_matrix[0][0]) ** 0.5
+                self.beta_SE = 0
+                self.Cov_alpha_beta = 0
+                self.alpha_upper = self.alpha * (
+                    np.exp(Z * (self.alpha_SE / self.alpha))
+                )
+                self.alpha_lower = self.alpha * (
+                    np.exp(-Z * (self.alpha_SE / self.alpha))
+                )
+                self.beta_upper = self.beta
+                self.beta_lower = self.beta
+            except LinAlgError:
+                # this exception is rare but can occur with some optimizers
+                colorprint(
+                    str(
+                        "WARNING: The hessian matrix obtained using the "
+                        + self.optimizer
+                        + " optimizer is non-invertable for the Weibull_2P model.\n"
+                        "Confidence interval estimates of the parameters could not be obtained.\n"
+                        "You may want to try fitting the model using a different optimizer."
+                    ),
+                    text_color="red",
+                )
+                self.alpha_SE = 0
+                self.beta_SE = 0
+                self.Cov_alpha_beta = 0
+                self.alpha_upper = self.alpha
+                self.alpha_lower = self.alpha
+                self.beta_upper = self.beta
+                self.beta_lower = self.beta
 
         results_data = {
             "Parameter": ["Alpha", "Beta"],
@@ -1761,6 +2195,8 @@ class Fit_Weibull_2P:
                 underline=True,
             )
             print("Analysis method:", self.method)
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
             print(
                 "Failures / Right censored:",
                 str(str(len(failures)) + "/" + str(len(right_censored))),
@@ -1793,6 +2229,7 @@ class Fit_Weibull_2P:
                 __fitted_dist_params=self,
                 CI=CI,
                 CI_type=CI_type,
+                downsample_scatterplot=downsample_scatterplot,
                 **kwargs,
             )
             self.probability_plot = plt.gca()
@@ -1841,14 +2278,11 @@ class Fit_Weibull_2P_grouped:
         regression on X), or 'RRY' (Rank regression on Y). LS will perform both
         RRX and RRY and return the better one. Default is 'MLE'.
     optimizer : str, optional
-        The optimisation algorithm used to find the solution. Must be either
-        'L-BFGS-B', 'TNC', or 'powell'. These are all bound constrained methods.
-        If the bounded method fails, 'nelder-mead' will be used. If
-        'nelder-mead' fails then the initial guess will be returned with a
-        warning. For more information on these optimizers see
-        https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.minimize.html#scipy.optimize.minimize
-        Default is 'L-BFGS-B' if the data is <= 97% right censored or 'TNC' if
-        the data is > 97% right censored.
+        The optimization algorithm used to find the solution. Must be either
+        'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'. The default optimizer is
+        'TNC'. The option to use all these optimizers is not available (as it is
+        in all the other Fitters). If the optimizer fails, the initial guess
+        will be returned.
     CI : float, optional
         confidence interval for estimating confidence limits on parameters. Must
         be between 0 and 1. Default is 0.95 for 95% CI.
@@ -1869,6 +2303,13 @@ class Fit_Weibull_2P_grouped:
         If an array or list is specified then it will be used instead of the
         default array. Any array or list specified must contain values between
         0 and 100.
+    downsample_scatterplot : bool, int, optional
+        If True or None, and there are over 1000 points, then the scatterplot
+        will be downsampled by a factor. The default downsample factor will seek
+        to produce between 500 and 1000 points. If a number is specified, it
+        will be used as the downsample factor. Default is True. This
+        functionality makes plotting faster when there are very large numbers of
+        points. It only affects the scatterplot not the calculations.
     kwargs
         Plotting keywords that are passed directly to matplotlib for the
         probability plot (e.g. color, label, linestyle)
@@ -1925,7 +2366,7 @@ class Fit_Weibull_2P_grouped:
     If the fitting process encounters a problem a warning will be printed. This
     may be caused by the chosen distribution being a very poor fit to the data
     or the data being heavily censored. If a warning is printed, consider trying
-    a different optimiser.
+    a different optimizer.
 
     Requirements of the input dataframe:
     The column titles MUST be 'category', 'time', 'quantity'
@@ -1983,6 +2424,7 @@ class Fit_Weibull_2P_grouped:
         method="MLE",
         optimizer=None,
         CI_type="time",
+        downsample_scatterplot=True,
         **kwargs,
     ):
 
@@ -2053,6 +2495,8 @@ class Fit_Weibull_2P_grouped:
         force_beta = inputs.force_beta
         CI_type = inputs.CI_type
         self.gamma = 0
+        if optimizer not in ["L-BFGS-B", "TNC", "powell", "nelder-mead"]:
+            optimizer = "TNC"  # temporary correction for "best" and "all"
 
         if method == "RRX":
             guess = least_squares(
@@ -2131,8 +2575,10 @@ class Fit_Weibull_2P_grouped:
             self.alpha = guess[0]
             self.beta = guess[1]
             self.method = str("Least Squares Estimation (" + LS_method + ")")
+            self.optimizer = None
         elif method == "MLE":
             self.method = "Maximum Likelihood Estimation (MLE)"
+            self.optimizer = optimizer
             n = sum(failure_qty) + sum(right_censored_qty)
             k = len(guess)
             initial_guess = guess
@@ -2212,6 +2658,7 @@ class Fit_Weibull_2P_grouped:
                     BIC_array.append(np.log(n) * k + LL2)
                     delta_BIC = abs(BIC_array[-1] - BIC_array[-2])
 
+            # check if the optimizer was successful. If it failed then return the initial guess with a warning
             if result.success is True:
                 params = result.x
                 if force_beta is None:
@@ -2220,59 +2667,19 @@ class Fit_Weibull_2P_grouped:
                 else:
                     self.alpha = params[0]
                     self.beta = force_beta
-            else:  # if the L-BFGS-B or TNC optimizer fails then we have a second attempt using the slower but slightly more reliable nelder-mead optimizer
+            else:  # return the initial guess with a warning
+                colorprint(
+                    str(
+                        "WARNING: MLE estimates failed for Fit_Weibull_2P_grouped. The least squares estimates have been returned. These results may not be as accurate as MLE. You may want to try another optimzer from 'L-BFGS-B','TNC','powell','nelder-mead'."
+                    ),
+                    text_color="red",
+                )
                 if force_beta is None:
-                    guess = initial_guess
-                    result = minimize(
-                        value_and_grad(Fit_Weibull_2P_grouped.LL),
-                        guess,
-                        args=(
-                            failure_times,
-                            right_censored_times,
-                            failure_qty,
-                            right_censored_qty,
-                        ),
-                        jac=True,
-                        tol=1e-4,
-                        method="nelder-mead",
-                    )
+                    self.alpha = initial_guess[0]
+                    self.beta = initial_guess[1]
                 else:
-                    guess = initial_guess[0]
-                    result = minimize(
-                        value_and_grad(Fit_Weibull_2P_grouped.LL_fb),
-                        guess,
-                        args=(
-                            failure_times,
-                            right_censored_times,
-                            failure_qty,
-                            right_censored_qty,
-                            force_beta,
-                        ),
-                        jac=True,
-                        tol=1e-4,
-                        method="nelder-mead",
-                    )
-                if result.success is True:
-                    params = result.x
-                    if force_beta is None:
-                        self.alpha = params[0]
-                        self.beta = params[1]
-                    else:
-                        self.alpha = params[0]
-                        self.beta = force_beta
-                else:
-                    colorprint(
-                        str(
-                            "WARNING: MLE estimates failed for Weibull_2P_grouped. The least squares estimates have been returned. These results may not be as accurate as MLE."
-                        ),
-                        text_color="red",
-                    )
-                    if force_beta is None:
-                        self.alpha = initial_guess[0]
-                        self.beta = initial_guess[1]
-                    else:
-                        self.alpha = initial_guess[0]
-                        self.beta = force_beta
+                    self.alpha = initial_guess[0]
+                    self.beta = force_beta
 
         # confidence interval estimates of parameters
         Z = -ss.norm.ppf((1 - CI) / 2)
@@ -2285,14 +2692,39 @@ class Fit_Weibull_2P_grouped:
                 np.array(tuple(failure_qty)),
                 np.array(tuple(right_censored_qty)),
             )
-            covariance_matrix = np.linalg.inv(hessian_matrix)
-            self.alpha_SE = abs(covariance_matrix[0][0]) ** 0.5
-            self.beta_SE = abs(covariance_matrix[1][1]) ** 0.5
-            self.Cov_alpha_beta = covariance_matrix[0][1]
-            self.alpha_upper = self.alpha * (np.exp(Z * (self.alpha_SE / self.alpha)))
-            self.alpha_lower = self.alpha * (np.exp(-Z * (self.alpha_SE / self.alpha)))
-            self.beta_upper = self.beta * (np.exp(Z * (self.beta_SE / self.beta)))
-            self.beta_lower = self.beta * (np.exp(-Z * (self.beta_SE / self.beta)))
+            try:
+                covariance_matrix = np.linalg.inv(hessian_matrix)
+                self.alpha_SE = abs(covariance_matrix[0][0]) ** 0.5
+                self.beta_SE = abs(covariance_matrix[1][1]) ** 0.5
+                self.Cov_alpha_beta = covariance_matrix[0][1]
+                self.alpha_upper = self.alpha * (
+                    np.exp(Z * (self.alpha_SE / self.alpha))
+                )
+                self.alpha_lower = self.alpha * (
+                    np.exp(-Z * (self.alpha_SE / self.alpha))
+                )
+                self.beta_upper = self.beta * (np.exp(Z * (self.beta_SE / self.beta)))
+                self.beta_lower = self.beta * (np.exp(-Z * (self.beta_SE / self.beta)))
+            except LinAlgError:
+                # this exception is rare but can occur with some optimizers
+                colorprint(
+                    str(
+                        "WARNING: The hessian matrix obtained using the "
+                        + self.optimizer
+                        + " optimizer is non-invertable for the Weibull_2P model.\n"
+                        "Confidence interval estimates of the parameters could not be obtained.\n"
+                        "You may want to try fitting the model using a different optimizer."
+                    ),
+                    text_color="red",
+                )
+                self.alpha_SE = 0
+                self.beta_SE = 0
+                self.Cov_alpha_beta = 0
+                self.alpha_upper = self.alpha
+                self.alpha_lower = self.alpha
+                self.beta_upper = self.beta
+                self.beta_lower = self.beta
+
         else:  # this is for when force beta is specified
             hessian_matrix = hessian(Fit_Weibull_2P_grouped.LL_fb)(
                 np.array(tuple([self.alpha])),
@@ -2302,14 +2734,38 @@ class Fit_Weibull_2P_grouped:
                 np.array(tuple(right_censored_qty)),
                 np.array(tuple([force_beta])),
             )
-            covariance_matrix = np.linalg.inv(hessian_matrix)
-            self.alpha_SE = abs(covariance_matrix[0][0]) ** 0.5
-            self.beta_SE = 0
-            self.Cov_alpha_beta = 0
-            self.alpha_upper = self.alpha * (np.exp(Z * (self.alpha_SE / self.alpha)))
-            self.alpha_lower = self.alpha * (np.exp(-Z * (self.alpha_SE / self.alpha)))
-            self.beta_upper = self.beta
-            self.beta_lower = self.beta
+            try:
+                covariance_matrix = np.linalg.inv(hessian_matrix)
+                self.alpha_SE = abs(covariance_matrix[0][0]) ** 0.5
+                self.beta_SE = 0
+                self.Cov_alpha_beta = 0
+                self.alpha_upper = self.alpha * (
+                    np.exp(Z * (self.alpha_SE / self.alpha))
+                )
+                self.alpha_lower = self.alpha * (
+                    np.exp(-Z * (self.alpha_SE / self.alpha))
+                )
+                self.beta_upper = self.beta
+                self.beta_lower = self.beta
+            except LinAlgError:
+                # this exception is rare but can occur with some optimizers
+                colorprint(
+                    str(
+                        "WARNING: The hessian matrix obtained using the "
+                        + self.optimizer
+                        + " optimizer is non-invertable for the Weibull_2P model.\n"
+                        "Confidence interval estimates of the parameters could not be obtained.\n"
+                        "You may want to try fitting the model using a different optimizer."
+                    ),
+                    text_color="red",
+                )
+                self.alpha_SE = 0
+                self.beta_SE = 0
+                self.Cov_alpha_beta = 0
+                self.alpha_upper = self.alpha
+                self.alpha_lower = self.alpha
+                self.beta_upper = self.beta
+                self.beta_lower = self.beta
 
         results_data = {
             "Parameter": ["Alpha", "Beta"],
@@ -2422,6 +2878,8 @@ class Fit_Weibull_2P_grouped:
                 underline=True,
             )
             print("Analysis method:", self.method)
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
             print(
                 "Failures / Right censored:",
                 str(str(sum(failure_qty)) + "/" + str(sum(right_censored_qty))),
@@ -2454,6 +2912,7 @@ class Fit_Weibull_2P_grouped:
                 __fitted_dist_params=self,
                 CI=CI,
                 CI_type=CI_type,
+                downsample_scatterplot=downsample_scatterplot,
                 **kwargs,
             )
             self.probability_plot = plt.gca()
@@ -2502,14 +2961,15 @@ class Fit_Weibull_3P:
         likelihood estimation), or 'LS' (least squares estimation).
         Default is 'MLE'.
     optimizer : str, optional
-        The optimisation algorithm used to find the solution. Must be either
-        'L-BFGS-B', 'TNC', or 'powell'. These are all bound constrained methods.
-        If the bounded method fails, 'nelder-mead' will be used. If
-        'nelder-mead' fails then the initial guess will be returned with a
-        warning. For more information on these optimizers see
-        https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.minimize.html#scipy.optimize.minimize
-        Default is 'L-BFGS-B' if the data is <= 97% right censored or 'TNC' if
-        the data is > 97% right censored.
+        The optimization algorithm used to find the solution. Must be either
+        'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'. Specifying the optimizer
+        will result in that optimizer being used. To use all of these specify
+        'best' and the best result will be returned. The default behaviour is to
+        try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and
+        'powell') and stop once one of the optimizers finds a solution. If the
+        optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation
+        <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
     CI : float, optional
         confidence interval for estimating confidence limits on parameters. Must
         be between 0 and 1. Default is 0.95 for 95% CI.
@@ -2521,11 +2981,18 @@ class Fit_Weibull_3P:
     percentiles : bool, str, list, array, None, optional
         percentiles (y-values) to produce a table of percentiles failed with
         lower, point, and upper estimates. Default is None which results in no
-        output. To use default array [1, 5, 10,..., 95, 99] set percentiles as
+        output. To use default array [1, 5, 10,..., 95, 99] set percentuiles as
         either 'auto', True, 'default', 'on'.
         If an array or list is specified then it will be used instead of the
         default array. Any array or list specified must contain values between
         0 and 100.
+    downsample_scatterplot : bool, int, optional
+        If True or None, and there are over 1000 points, then the scatterplot
+        will be downsampled by a factor. The default downsample factor will seek
+        to produce between 500 and 1000 points. If a number is specified, it
+        will be used as the downsample factor. Default is True. This
+        functionality makes plotting faster when there are very large numbers of
+        points. It only affects the scatterplot not the calculations.
     kwargs
         Plotting keywords that are passed directly to matplotlib for the
         probability plot (e.g. color, label, linestyle)
@@ -2590,7 +3057,7 @@ class Fit_Weibull_3P:
     If the fitting process encounters a problem a warning will be printed. This
     may be caused by the chosen distribution being a very poor fit to the data
     or the data being heavily censored. If a warning is printed, consider trying
-    a different optimiser.
+    a different optimizer.
 
     If the fitted gamma parameter is less than 0.01, the Weibull_3P results will
     be discarded and the Weibull_2P distribution will be fitted. The returned
@@ -2608,6 +3075,7 @@ class Fit_Weibull_3P:
         CI_type="time",
         optimizer=None,
         method="MLE",
+        downsample_scatterplot=True,
         **kwargs,
     ):
 
@@ -2634,7 +3102,8 @@ class Fit_Weibull_3P:
             LS_method = "LS"
         else:
             LS_method = method
-        LS_results = LS_optimisation(
+
+        LS_results = LS_optimization(
             func_name="Weibull_3P",
             LL_func=Fit_Weibull_3P.LL,
             failures=failures,
@@ -2648,10 +3117,10 @@ class Fit_Weibull_3P:
             self.beta = LS_results.guess[1]
             self.gamma = LS_results.guess[2]
             self.method = str("Least Squares Estimation (" + LS_results.method + ")")
-
+            self.optimizer = None
         # maximum likelihood method
         elif method == "MLE":
-            MLE_results = MLE_optimisation(
+            MLE_results = MLE_optimization(
                 func_name="Weibull_3P",
                 LL_func=Fit_Weibull_3P.LL,
                 initial_guess=[
@@ -2667,6 +3136,7 @@ class Fit_Weibull_3P:
             self.beta = MLE_results.shape
             self.gamma = MLE_results.gamma
             self.method = "Maximum Likelihood Estimation (MLE)"
+            self.optimizer = MLE_results.optimizer
 
         if (
             self.gamma < 0.01
@@ -2703,26 +3173,55 @@ class Fit_Weibull_3P:
                 np.array(tuple(failures - self.gamma)),
                 np.array(tuple(right_censored - self.gamma)),
             )
-            covariance_matrix = np.linalg.inv(hessian_matrix)
-            # this is to get the gamma_SE. Unfortunately this approach for alpha_SE and beta_SE give SE values that are very large resulting in incorrect CI plots. This is the same method used by Reliasoft
-            hessian_matrix_for_gamma = hessian(Fit_Weibull_3P.LL)(
-                np.array(tuple(params_3P)),
-                np.array(tuple(failures)),
-                np.array(tuple(right_censored)),
-            )
-            covariance_matrix_for_gamma = np.linalg.inv(hessian_matrix_for_gamma)
-            self.alpha_SE = abs(covariance_matrix[0][0]) ** 0.5
-            self.beta_SE = abs(covariance_matrix[1][1]) ** 0.5
-            self.gamma_SE = abs(covariance_matrix_for_gamma[2][2]) ** 0.5
-            self.Cov_alpha_beta = covariance_matrix[0][1]
-            self.alpha_upper = self.alpha * (np.exp(Z * (self.alpha_SE / self.alpha)))
-            self.alpha_lower = self.alpha * (np.exp(-Z * (self.alpha_SE / self.alpha)))
-            self.beta_upper = self.beta * (np.exp(Z * (self.beta_SE / self.beta)))
-            self.beta_lower = self.beta * (np.exp(-Z * (self.beta_SE / self.beta)))
-            self.gamma_upper = self.gamma * (
-                np.exp(Z * (self.gamma_SE / self.gamma))
-            )  # here we assume gamma can only be positive as there are bounds placed on it in the optimizer. Minitab assumes positive or negative so bounds are different
-            self.gamma_lower = self.gamma * (np.exp(-Z * (self.gamma_SE / self.gamma)))
+            try:
+                covariance_matrix = np.linalg.inv(hessian_matrix)
+                # this is to get the gamma_SE. Unfortunately this approach for alpha_SE and beta_SE give SE values that are very large resulting in incorrect CI plots. This is the same method used by Reliasoft
+                hessian_matrix_for_gamma = hessian(Fit_Weibull_3P.LL)(
+                    np.array(tuple(params_3P)),
+                    np.array(tuple(failures)),
+                    np.array(tuple(right_censored)),
+                )
+                covariance_matrix_for_gamma = np.linalg.inv(hessian_matrix_for_gamma)
+                self.alpha_SE = abs(covariance_matrix[0][0]) ** 0.5
+                self.beta_SE = abs(covariance_matrix[1][1]) ** 0.5
+                self.gamma_SE = abs(covariance_matrix_for_gamma[2][2]) ** 0.5
+                self.Cov_alpha_beta = covariance_matrix[0][1]
+                self.alpha_upper = self.alpha * (
+                    np.exp(Z * (self.alpha_SE / self.alpha))
+                )
+                self.alpha_lower = self.alpha * (
+                    np.exp(-Z * (self.alpha_SE / self.alpha))
+                )
+                self.beta_upper = self.beta * (np.exp(Z * (self.beta_SE / self.beta)))
+                self.beta_lower = self.beta * (np.exp(-Z * (self.beta_SE / self.beta)))
+                self.gamma_upper = self.gamma * (
+                    np.exp(Z * (self.gamma_SE / self.gamma))
+                )  # here we assume gamma can only be positive as there are bounds placed on it in the optimizer. Minitab assumes positive or negative so bounds are different
+                self.gamma_lower = self.gamma * (
+                    np.exp(-Z * (self.gamma_SE / self.gamma))
+                )
+            except LinAlgError:
+                # this exception is rare but can occur with some optimizers
+                colorprint(
+                    str(
+                        "WARNING: The hessian matrix obtained using the "
+                        + self.optimizer
+                        + " optimizer is non-invertable for the Weibull_3P model.\n"
+                        "Confidence interval estimates of the parameters could not be obtained.\n"
+                        "You may want to try fitting the model using a different optimizer."
+                    ),
+                    text_color="red",
+                )
+                self.alpha_SE = 0
+                self.beta_SE = 0
+                self.gamma_SE = 0
+                self.Cov_alpha_beta = 0
+                self.alpha_upper = self.alpha
+                self.alpha_lower = self.alpha
+                self.beta_upper = self.beta
+                self.beta_lower = self.beta
+                self.gamma_upper = self.gamma
+                self.gamma_lower = self.gamma
 
         results_data = {
             "Parameter": ["Alpha", "Beta", "Gamma"],
@@ -2817,6 +3316,8 @@ class Fit_Weibull_3P:
                 underline=True,
             )
             print("Analysis method:", self.method)
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
             print(
                 "Failures / Right censored:",
                 str(str(len(failures)) + "/" + str(len(right_censored))),
@@ -2849,6 +3350,7 @@ class Fit_Weibull_3P:
                 __fitted_dist_params=self,
                 CI=CI,
                 CI_type=CI_type,
+                downsample_scatterplot=downsample_scatterplot,
                 **kwargs,
             )
             if self.gamma < 0.01:
@@ -2905,17 +3407,25 @@ class Fit_Weibull_Mixture:
         Prints a dataframe of the point estimate, standard error, Lower CI and
         Upper CI for each parameter. True or False. Default = True
     optimizer : str, optional
-        The optimisation algorithm used to find the solution. Must be either
-        'L-BFGS-B', 'TNC', or 'powell'. These are all bound constrained methods.
-        If the bounded method fails, 'nelder-mead' will be used. If
-        'nelder-mead' fails then the initial guess will be returned with a
-        warning. For more information on these optimizers see
-        https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.minimize.html#scipy.optimize.minimize
-        Default is 'L-BFGS-B' if the data is <= 97% right censored or 'TNC' if
-        the data is > 97% right censored.
+        The optimization algorithm used to find the solution. Must be either
+        'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'. Specifying the optimizer
+        will result in that optimizer being used. To use all of these specify
+        'best' and the best result will be returned. The default behaviour is to
+        try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and
+        'powell') and stop once one of the optimizers finds a solution. If the
+        optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation
+        <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
     CI : float, optional
         confidence interval for estimating confidence limits on parameters. Must
         be between 0 and 1. Default is 0.95 for 95% CI.
+    downsample_scatterplot : bool, int, optional
+        If True or None, and there are over 1000 points, then the scatterplot
+        will be downsampled by a factor. The default downsample factor will seek
+        to produce between 500 and 1000 points. If a number is specified, it
+        will be used as the downsample factor. Default is True. This
+        functionality makes plotting faster when there are very large numbers of
+        points. It only affects the scatterplot not the calculations.
     kwargs
         Plotting keywords that are passed directly to matplotlib for the
         probability plot (e.g. color, label, linestyle)
@@ -3012,7 +3522,7 @@ class Fit_Weibull_Mixture:
     If the fitting process encounters a problem a warning will be printed. This
     may be caused by the chosen distribution being a very poor fit to the data
     or the data being heavily censored. If a warning is printed, consider trying
-    a different optimiser.
+    a different optimizer.
     """
 
     def __init__(
@@ -3023,6 +3533,7 @@ class Fit_Weibull_Mixture:
         print_results=True,
         CI=0.95,
         optimizer=None,
+        downsample_scatterplot=True,
         **kwargs,
     ):
 
@@ -3043,51 +3554,58 @@ class Fit_Weibull_Mixture:
             failures=failures, right_censored=right_censored
         )  # this is only used to find AD
 
-        # find the division line. This is to assign data to each group
-        h = np.histogram(failures, bins=50, density=True)
-        hist_counts = h[0]
-        hist_bins = h[1]
-        midbins = []
-        for i in range(len(hist_bins)):
-            if i > 0 and i < len(hist_bins):
-                midbins.append((hist_bins[i] + hist_bins[i - 1]) / 2)
-        peaks_x = []
-        peaks_y = []
-        batch_width = 8
-        for i, x in enumerate(hist_counts):
-            if i < batch_width:
-                batch = hist_counts[0 : i + batch_width]
-            elif i > batch_width and i > len(hist_counts - batch_width):
-                batch = hist_counts[i - batch_width : len(hist_counts)]
-            else:
-                batch = hist_counts[
-                    i - batch_width : i + batch_width
-                ]  # the histogram counts are batched (actual batch size = 2 x batch_width)
-            if (
-                max(batch) == x
-            ):  # if the current point is higher than the rest of the batch then it is counted as a peak
-                peaks_x.append(midbins[i])
-                peaks_y.append(x)
-        if (
-            len(peaks_x) > 2
-        ):  # if there are more than 2 peaks, the mean is moved based on the height of the peaks. Higher peaks will attract the mean towards them more than smaller peaks.
-            yfracs = np.array(peaks_y) / sum(peaks_y)
-            division_line = sum(peaks_x * yfracs)
+        # this algorithm is used to estimate the dividing line between the two groups
+        # firstly it fits a gaussian kde to the histogram
+        # then it draws two straight lines from the highest peak of the kde down to the lower and upper bounds of the failures
+        # the dividing line is the point where the difference between the kde and the straight lines is greatest
+        max_failures = max(failures)
+        min_failures = min(failures)
+        gkde = ss.gaussian_kde(failures)
+        delta = max_failures - min_failures
+        x_kde = np.linspace(min_failures - delta / 5, max_failures + delta / 5, 100)
+        y_kde = gkde.evaluate(x_kde)
+        peak_y = max(y_kde)
+        peak_x = x_kde[np.where(y_kde == peak_y)][0]
+
+        left_x = min_failures
+        left_y = gkde.evaluate(left_x)
+        left_m = (peak_y - left_y) / (peak_x - left_x)
+        left_c = -left_m * left_x + left_y
+        left_line_x = np.linspace(left_x, peak_x, 100)
+        left_line_y = left_m * left_line_x + left_c  # y=mx+c
+        left_kde = gkde.evaluate(left_line_x)
+        left_diff = abs(left_line_y - left_kde)
+        left_diff_max = max(left_diff)
+        left_div_line = left_line_x[np.where(left_diff == left_diff_max)][0]
+
+        right_x = max_failures
+        right_y = gkde.evaluate(right_x)
+        right_m = (right_y - peak_y) / (right_x - peak_x)
+        right_c = -right_m * right_x + right_y
+        right_line_x = np.linspace(peak_x, right_x, 100)
+        right_line_y = right_m * right_line_x + right_c  # y=mx+c
+        right_kde = gkde.evaluate(right_line_x)
+        right_diff = abs(right_line_y - right_kde)
+        right_diff_max = max(right_diff)
+        right_div_line = right_line_x[np.where(right_diff == right_diff_max)][0]
+
+        if left_diff_max > right_diff_max:
+            dividing_line = left_div_line
         else:
-            division_line = np.average(peaks_x)
-        self.division_line = division_line
+            dividing_line = right_div_line
+
         # this is the point at which data is assigned to one group or another for the purpose of generating the initial guess
         GROUP_1_failures = []
         GROUP_2_failures = []
         GROUP_1_right_cens = []
         GROUP_2_right_cens = []
         for item in failures:
-            if item < division_line:
+            if item < dividing_line:
                 GROUP_1_failures.append(item)
             else:
                 GROUP_2_failures.append(item)
         for item in right_censored:
-            if item < division_line:
+            if item < dividing_line:
                 GROUP_1_right_cens.append(item)
             else:
                 GROUP_2_right_cens.append(item)
@@ -3107,9 +3625,8 @@ class Fit_Weibull_Mixture:
             print_results=False,
             optimizer=optimizer,
         )
-        p_guess = (
-            len(GROUP_1_failures) + len(GROUP_1_right_cens)
-        ) / n  # proportion guess
+        # proportion guess
+        p_guess = (len(GROUP_1_failures) + len(GROUP_1_right_cens)) / n
         guess = [
             group_1_estimates.alpha,
             group_1_estimates.beta,
@@ -3119,7 +3636,7 @@ class Fit_Weibull_Mixture:
         ]  # A1,B1,A2,B2,P
 
         # solve it
-        MLE_results = MLE_optimisation(
+        MLE_results = MLE_optimization(
             func_name="Weibull_mixture",
             LL_func=Fit_Weibull_Mixture.LL,
             initial_guess=guess,
@@ -3133,6 +3650,7 @@ class Fit_Weibull_Mixture:
         self.beta_2 = MLE_results.beta_2
         self.proportion_1 = MLE_results.proportion_1
         self.proportion_2 = MLE_results.proportion_2
+        self.optimizer = MLE_results.optimizer
         dist_1 = Weibull_Distribution(alpha=self.alpha_1, beta=self.beta_1)
         dist_2 = Weibull_Distribution(alpha=self.alpha_2, beta=self.beta_2)
         self.distribution = Mixture_Model(
@@ -3172,12 +3690,12 @@ class Fit_Weibull_Mixture:
             self.beta_2_SE = abs(covariance_matrix[3][3]) ** 0.5
             self.proportion_1_SE = abs(covariance_matrix[4][4]) ** 0.5
         except LinAlgError:
-            # this exception is rare but can occur with some optimisers
+            # this exception is rare but can occur with some optimizers
             colorprint(
                 str(
                     "WARNING: The hessian matrix obtained using the "
-                    + optimizer
-                    + " optimizer is non-invertable for the Weibull mixture model.\n"
+                    + self.optimizer
+                    + " optimizer is non-invertable for the Weibull_Mixture model.\n"
                     "Confidence interval estimates of the parameters could not be obtained.\n"
                     "You may want to try fitting the model using a different optimizer."
                 ),
@@ -3215,7 +3733,8 @@ class Fit_Weibull_Mixture:
                     / (self.proportion_1 * (1 - self.proportion_1))
                 )
             )
-        )  # ref: http://reliawiki.org/index.php/The_Mixed_Weibull_Distribution
+        )
+        # ref: http://reliawiki.org/index.php/The_Mixed_Weibull_Distribution
         self.proportion_1_lower = self.proportion_1 / (
             self.proportion_1
             + (1 - self.proportion_1)
@@ -3294,7 +3813,9 @@ class Fit_Weibull_Mixture:
                 bold=True,
                 underline=True,
             )
-            print("Analysis method: MLE")
+            print("Analysis method: Maximum Likelihood Estimation (MLE)")
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
             print(
                 "Failures / Right censored:",
                 str(str(len(failures)) + "/" + str(len(right_censored))),
@@ -3312,7 +3833,11 @@ class Fit_Weibull_Mixture:
             else:
                 rc = right_censored
             Weibull_probability_plot(
-                failures=failures, right_censored=rc, show_fitted_distribution=False
+                failures=failures,
+                right_censored=rc,
+                show_fitted_distribution=False,
+                downsample_scatterplot=downsample_scatterplot,
+                **kwargs,
             )
             if "label" in kwargs:
                 label_str = kwargs.pop("label")
@@ -3386,17 +3911,25 @@ class Fit_Weibull_CR:
         Prints a dataframe of the point estimate, standard error, Lower CI and
         Upper CI for each parameter. True or False. Default = True
     optimizer : str, optional
-        The optimisation algorithm used to find the solution. Must be either
-        'L-BFGS-B', 'TNC', or 'powell'. These are all bound constrained methods.
-        If the bounded method fails, 'nelder-mead' will be used. If
-        'nelder-mead' fails then the initial guess will be returned with a
-        warning. For more information on these optimizers see
-        https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.minimize.html#scipy.optimize.minimize
-        Default is 'L-BFGS-B' if the data is <= 97% right censored or 'TNC' if
-        the data is > 97% right censored.
+        The optimization algorithm used to find the solution. Must be either
+        'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'. Specifying the optimizer
+        will result in that optimizer being used. To use all of these specify
+        'best' and the best result will be returned. The default behaviour is to
+        try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and
+        'powell') and stop once one of the optimizers finds a solution. If the
+        optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation
+        <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
     CI : float, optional
         confidence interval for estimating confidence limits on parameters. Must
         be between 0 and 1. Default is 0.95 for 95% CI.
+    downsample_scatterplot : bool, int, optional
+        If True or None, and there are over 1000 points, then the scatterplot
+        will be downsampled by a factor. The default downsample factor will seek
+        to produce between 500 and 1000 points. If a number is specified, it
+        will be used as the downsample factor. Default is True. This
+        functionality makes plotting faster when there are very large numbers of
+        points. It only affects the scatterplot not the calculations.
     kwargs
         Plotting keywords that are passed directly to matplotlib for the
         probability plot (e.g. color, label, linestyle)
@@ -3485,6 +4018,7 @@ class Fit_Weibull_CR:
         print_results=True,
         CI=0.95,
         optimizer=None,
+        downsample_scatterplot=True,
         **kwargs,
     ):
 
@@ -3504,51 +4038,59 @@ class Fit_Weibull_CR:
         _, y = plotting_positions(
             failures=failures, right_censored=right_censored
         )  # this is only used to find AD
-        # find the division line. This is to assign data to each group
-        h = np.histogram(failures, bins=50, density=True)
-        hist_counts = h[0]
-        hist_bins = h[1]
-        midbins = []
-        for i in range(len(hist_bins)):
-            if i > 0 and i < len(hist_bins):
-                midbins.append((hist_bins[i] + hist_bins[i - 1]) / 2)
-        peaks_x = []
-        peaks_y = []
-        batch_width = 8
-        for i, x in enumerate(hist_counts):
-            if i < batch_width:
-                batch = hist_counts[0 : i + batch_width]
-            elif i > batch_width and i > len(hist_counts - batch_width):
-                batch = hist_counts[i - batch_width : len(hist_counts)]
-            else:
-                batch = hist_counts[
-                    i - batch_width : i + batch_width
-                ]  # the histogram counts are batched (actual batch size = 2 x batch_width)
-            if (
-                max(batch) == x
-            ):  # if the current point is higher than the rest of the batch then it is counted as a peak
-                peaks_x.append(midbins[i])
-                peaks_y.append(x)
-        if (
-            len(peaks_x) > 2
-        ):  # if there are more than 2 peaks, the mean is moved based on the height of the peaks. Higher peaks will attract the mean towards them more than smaller peaks.
-            yfracs = np.array(peaks_y) / sum(peaks_y)
-            division_line = sum(peaks_x * yfracs)
+
+        # this algorithm is used to estimate the dividing line between the two groups
+        # firstly it fits a gaussian kde to the histogram
+        # then it draws two straight lines from the highest peak of the kde down to the lower and upper bounds of the failures
+        # the dividing line is the point where the difference between the kde and the straight lines is greatest
+        max_failures = max(failures)
+        min_failures = min(failures)
+        gkde = ss.gaussian_kde(failures)
+        delta = max_failures - min_failures
+        x_kde = np.linspace(min_failures - delta / 5, max_failures + delta / 5, 100)
+        y_kde = gkde.evaluate(x_kde)
+        peak_y = max(y_kde)
+        peak_x = x_kde[np.where(y_kde == peak_y)][0]
+
+        left_x = min_failures
+        left_y = gkde.evaluate(left_x)
+        left_m = (peak_y - left_y) / (peak_x - left_x)
+        left_c = -left_m * left_x + left_y
+        left_line_x = np.linspace(left_x, peak_x, 100)
+        left_line_y = left_m * left_line_x + left_c  # y=mx+c
+        left_kde = gkde.evaluate(left_line_x)
+        left_diff = abs(left_line_y - left_kde)
+        left_diff_max = max(left_diff)
+        left_div_line = left_line_x[np.where(left_diff == left_diff_max)][0]
+
+        right_x = max_failures
+        right_y = gkde.evaluate(right_x)
+        right_m = (right_y - peak_y) / (right_x - peak_x)
+        right_c = -right_m * right_x + right_y
+        right_line_x = np.linspace(peak_x, right_x, 100)
+        right_line_y = right_m * right_line_x + right_c  # y=mx+c
+        right_kde = gkde.evaluate(right_line_x)
+        right_diff = abs(right_line_y - right_kde)
+        right_diff_max = max(right_diff)
+        right_div_line = right_line_x[np.where(right_diff == right_diff_max)][0]
+
+        if left_diff_max > right_diff_max:
+            dividing_line = left_div_line
         else:
-            division_line = np.average(peaks_x)
-        self.division_line = division_line
+            dividing_line = right_div_line
+
         # this is the point at which data is assigned to one group or another for the purpose of generating the initial guess
         GROUP_1_failures = []
         GROUP_2_failures = []
         GROUP_1_right_cens = []
         GROUP_2_right_cens = []
         for item in failures:
-            if item < division_line:
+            if item < dividing_line:
                 GROUP_1_failures.append(item)
             else:
                 GROUP_2_failures.append(item)
         for item in right_censored:
-            if item < division_line:
+            if item < dividing_line:
                 GROUP_1_right_cens.append(item)
             else:
                 GROUP_2_right_cens.append(item)
@@ -3574,7 +4116,7 @@ class Fit_Weibull_CR:
         ]  # A1,B1,A2,B2
 
         # solve it
-        MLE_results = MLE_optimisation(
+        MLE_results = MLE_optimization(
             func_name="Weibull_CR",
             LL_func=Fit_Weibull_CR.LL,
             initial_guess=guess,
@@ -3586,6 +4128,7 @@ class Fit_Weibull_CR:
         self.beta_1 = MLE_results.beta_1
         self.alpha_2 = MLE_results.alpha_2
         self.beta_2 = MLE_results.beta_2
+        self.optimizer = MLE_results.optimizer
         dist_1 = Weibull_Distribution(alpha=self.alpha_1, beta=self.beta_1)
         dist_2 = Weibull_Distribution(alpha=self.alpha_2, beta=self.beta_2)
         self.distribution = Competing_Risks_Model(distributions=[dist_1, dist_2])
@@ -3615,12 +4158,12 @@ class Fit_Weibull_CR:
             self.alpha_2_SE = abs(covariance_matrix[2][2]) ** 0.5
             self.beta_2_SE = abs(covariance_matrix[3][3]) ** 0.5
         except LinAlgError:
-            # this exception is rare but can occur with some optimisers
+            # this exception is rare but can occur with some optimizers
             colorprint(
                 str(
                     "WARNING: The hessian matrix obtained using the "
-                    + optimizer
-                    + " optimizer is non-invertable for the Weibull competing risks model.\n"
+                    + self.optimizer
+                    + " optimizer is non-invertable for the Weibull_CR model.\n"
                     "Confidence interval estimates of the parameters could not be obtained.\n"
                     "You may want to try fitting the model using a different optimizer."
                 ),
@@ -3705,7 +4248,9 @@ class Fit_Weibull_CR:
                 bold=True,
                 underline=True,
             )
-            print("Analysis method: MLE")
+            print("Analysis method: Maximum Likelihood Estimation (MLE)")
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
             print(
                 "Failures / Right censored:",
                 str(str(len(failures)) + "/" + str(len(right_censored))),
@@ -3723,7 +4268,11 @@ class Fit_Weibull_CR:
             else:
                 rc = right_censored
             Weibull_probability_plot(
-                failures=failures, right_censored=rc, show_fitted_distribution=False
+                failures=failures,
+                right_censored=rc,
+                show_fitted_distribution=False,
+                downsample_scatterplot=downsample_scatterplot,
+                **kwargs,
             )
             if "label" in kwargs:
                 label_str = kwargs.pop("label")
@@ -3771,6 +4320,1054 @@ class Fit_Weibull_CR:
         return -(LL_f + LL_rc)
 
 
+class Fit_Weibull_DSZI:
+    """
+    Fits a Weibull Defective Subpopulation Zero Inflated (DSZI) distribution to
+    the data provided. This is a 4 parameter distribution (alpha, beta, DS, ZI).
+
+    Parameters
+    ----------
+    failures : array, list
+        An array or list of the failure data. There must be at least 2 non-zero
+        failures.
+    right_censored : array, list, optional
+        The right censored data. Optional input. Default = None.
+    show_probability_plot : bool, optional
+        True or False. Default = True
+    print_results : bool, optional
+        Prints a dataframe of the point estimate, standard error, Lower CI and
+        Upper CI for each parameter. True or False. Default = True
+    optimizer : str, optional
+        The optimization algorithm used to find the solution. Must be either
+        'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'. Specifying the optimizer
+        will result in that optimizer being used. To use all of these specify
+        'best' and the best result will be returned. The default behaviour is to
+        try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and
+        'powell') and stop once one of the optimizers finds a solution. If the
+        optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation
+        <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
+    CI : float, optional
+        confidence interval for estimating confidence limits on parameters. Must
+        be between 0 and 1. Default is 0.95 for 95% CI.
+    downsample_scatterplot : bool, int, optional
+        If True or None, and there are over 1000 points, then the scatterplot
+        will be downsampled by a factor. The default downsample factor will seek
+        to produce between 500 and 1000 points. If a number is specified, it
+        will be used as the downsample factor. Default is True. This
+        functionality makes plotting faster when there are very large numbers of
+        points. It only affects the scatterplot not the calculations.
+    kwargs
+        Plotting keywords that are passed directly to matplotlib for the
+        probability plot (e.g. color, label, linestyle)
+
+    Returns
+    -------
+    alpha : float
+        the fitted Weibull_DSZI alpha parameter
+    beta : float
+        the fitted Weibull_DSZI beta parameter
+    DS : float
+        the fitted Weibull_DSZI DS parameter
+    ZI : float
+        the fitted Weibull_DSZI ZI parameter
+    alpha_SE : float
+        the standard error (sqrt(variance)) of the parameter
+    beta_SE :float
+        the standard error (sqrt(variance)) of the parameter
+    DS_SE :float
+        the standard error (sqrt(variance)) of the parameter
+    ZI_SE :float
+        the standard error (sqrt(variance)) of the parameter
+    alpha_upper : float
+        the upper CI estimate of the parameter
+    alpha_lower : float
+        the lower CI estimate of the parameter
+    beta_upper : float
+        the upper CI estimate of the parameter
+    beta_lower : float
+        the lower CI estimate of the parameter
+    DS_upper : float
+        the upper CI estimate of the parameter
+    DS_lower : float
+        the lower CI estimate of the parameter
+    ZI_upper : float
+        the upper CI estimate of the parameter
+    ZI_lower : float
+        the lower CI estimate of the parameter
+    loglik : float
+        Log Likelihood (as used in Minitab and Reliasoft)
+    loglik2 : float
+        LogLikelihood*-2 (as used in JMP Pro)
+    AICc : float
+        Akaike Information Criterion
+    BIC : float
+        Bayesian Information Criterion
+    AD : float
+        the Anderson Darling (corrected) statistic (as reported by Minitab)
+    distribution : object
+        a DSZI_Model object with the parameters of the fitted distribution
+    results : dataframe
+        a pandas dataframe of the results (point estimate, standard error,
+        lower CI and upper CI for each parameter)
+    goodness_of_fit : dataframe
+        a pandas dataframe of the goodness of fit values (Log-likelihood, AICc,
+        BIC, AD).
+    probability_plot : object
+        the axes handle for the probability plot. This is only returned if
+        show_probability_plot = True
+
+    Notes
+    -----
+    If the fitting process encounters a problem a warning will be printed. This
+    may be caused by the chosen distribution being a very poor fit to the data
+    or the data being heavily censored. If a warning is printed, consider trying
+    a different optimizer.
+    """
+
+    def __init__(
+        self,
+        failures=None,
+        right_censored=None,
+        show_probability_plot=True,
+        print_results=True,
+        CI=0.95,
+        optimizer=None,
+        downsample_scatterplot=True,
+        **kwargs,
+    ):
+        # need to remove zeros before passing to fitters input checking
+        failures = np.asarray(failures)
+        failures_no_zeros = failures[failures != 0]
+        failures_zeros = failures[failures == 0]
+
+        inputs = fitters_input_checking(
+            dist="Weibull_DSZI",
+            failures=failures_no_zeros,
+            right_censored=right_censored,
+            optimizer=optimizer,
+            CI=CI,
+        )
+        failures_no_zeros = inputs.failures
+        right_censored = inputs.right_censored
+        CI = inputs.CI
+        optimizer = inputs.optimizer
+
+        # obtain initial estimates of the parameters
+        _, y_pts = plotting_positions(failures=failures, right_censored=right_censored)
+        DS_guess = max(y_pts)
+
+        weibull_2P_fit = Fit_Weibull_2P(
+            failures=failures_no_zeros,
+            right_censored=None,
+            print_results=False,
+            show_probability_plot=False,
+            optimizer=optimizer,
+        )
+        alpha_guess = weibull_2P_fit.alpha
+        beta_guess = weibull_2P_fit.beta
+        ZI_guess = len(failures_zeros) / (len(failures) + len(right_censored))
+
+        # maximum likelihood method
+        MLE_results = MLE_optimization(
+            func_name="Weibull_DSZI",
+            LL_func=Fit_Weibull_DSZI.LL,
+            initial_guess=[alpha_guess, beta_guess, DS_guess, ZI_guess],
+            failures=failures,
+            right_censored=right_censored,
+            optimizer=optimizer,
+        )
+        self.alpha = MLE_results.alpha
+        self.beta = MLE_results.beta
+        self.DS = MLE_results.DS
+        self.ZI = MLE_results.ZI
+        self.method = "Maximum Likelihood Estimation (MLE)"
+        self.optimizer = MLE_results.optimizer
+
+        # confidence interval estimates of parameters. This uses the Fisher Matrix so it can be applied to both MLE and LS estimates.
+        Z = -ss.norm.ppf((1 - CI) / 2)
+        params = [self.alpha, self.beta, self.DS, self.ZI]
+        hessian_matrix = hessian(Fit_Weibull_DSZI.LL)(
+            np.array(tuple(params)),
+            np.array(tuple(failures_zeros)),
+            np.array(tuple(failures_no_zeros)),
+            np.array(tuple(right_censored)),
+        )
+        try:
+            covariance_matrix = np.linalg.inv(hessian_matrix)
+            self.alpha_SE = abs(covariance_matrix[0][0]) ** 0.5
+            self.beta_SE = abs(covariance_matrix[1][1]) ** 0.5
+            self.DS_SE = abs(covariance_matrix[2][2]) ** 0.5
+            self.ZI_SE = abs(covariance_matrix[3][3]) ** 0.5
+        except LinAlgError:
+            # this exception is rare but can occur with some optimizers
+            colorprint(
+                str(
+                    "WARNING: The hessian matrix obtained using the "
+                    + self.optimizer
+                    + " optimizer is non-invertable for the Weibull_DSZI Model.\n"
+                    "Confidence interval estimates of the parameters could not be obtained.\n"
+                    "You may want to try fitting the model using a different optimizer."
+                ),
+                text_color="red",
+            )
+            self.alpha_SE = 0
+            self.beta_SE = 0
+            self.DS_SE = 0
+            self.ZI_SE = 0
+
+        self.alpha_upper = self.alpha * (np.exp(Z * (self.alpha_SE / self.alpha)))
+        self.alpha_lower = self.alpha * (np.exp(-Z * (self.alpha_SE / self.alpha)))
+        self.beta_upper = self.beta * (np.exp(Z * (self.beta_SE / self.beta)))
+        self.beta_lower = self.beta * (np.exp(-Z * (self.beta_SE / self.beta)))
+        if self.DS == 1:
+            self.DS_lower = 1  # DS=1 causes a divide by zero error for CIs
+            self.DS_upper = 1
+        else:
+            self.DS_upper = self.DS / (
+                self.DS
+                + (1 - self.DS) * (np.exp(-Z * self.DS_SE / (self.DS * (1 - self.DS))))
+            )
+            self.DS_lower = self.DS / (
+                self.DS
+                + (1 - self.DS) * (np.exp(Z * self.DS_SE / (self.DS * (1 - self.DS))))
+            )
+        if self.ZI == 0:
+            self.ZI_upper = 0  # ZI = 0 causes a divide by zero error for CIs
+            self.ZI_lower = 0
+        else:
+            self.ZI_upper = self.ZI / (
+                self.ZI
+                + (1 - self.ZI) * (np.exp(-Z * self.ZI_SE / (self.ZI * (1 - self.ZI))))
+            )
+            self.ZI_lower = self.ZI / (
+                self.ZI
+                + (1 - self.ZI) * (np.exp(Z * self.ZI_SE / (self.ZI * (1 - self.ZI))))
+            )
+
+        results_data = {
+            "Parameter": ["Alpha", "Beta", "DS", "ZI"],
+            "Point Estimate": [self.alpha, self.beta, self.DS, self.ZI],
+            "Standard Error": [self.alpha_SE, self.beta_SE, self.DS_SE, self.ZI_SE],
+            "Lower CI": [
+                self.alpha_lower,
+                self.beta_lower,
+                self.DS_lower,
+                self.ZI_lower,
+            ],
+            "Upper CI": [
+                self.alpha_upper,
+                self.beta_upper,
+                self.DS_upper,
+                self.ZI_upper,
+            ],
+        }
+        self.results = pd.DataFrame(
+            results_data,
+            columns=[
+                "Parameter",
+                "Point Estimate",
+                "Standard Error",
+                "Lower CI",
+                "Upper CI",
+            ],
+        )
+        self.distribution = DSZI_Model(
+            distribution=Weibull_Distribution(alpha=self.alpha, beta=self.beta),
+            DS=self.DS,
+            ZI=self.ZI,
+        )
+
+        # goodness of fit measures
+        n = len(failures) + len(right_censored)
+        k = 4
+        LL2 = 2 * Fit_Weibull_DSZI.LL(
+            params, failures_zeros, failures_no_zeros, right_censored
+        )
+        self.loglik2 = LL2
+        self.loglik = LL2 * -0.5
+        if n - k - 1 > 0:
+            self.AICc = 2 * k + LL2 + (2 * k ** 2 + 2 * k) / (n - k - 1)
+        else:
+            self.AICc = "Insufficient data"
+        self.BIC = np.log(n) * k + LL2
+
+        x, y = plotting_positions(failures=failures, right_censored=right_censored)
+        # moves all the y values for the x=0 points to be equal to the value of ZI.
+        y = np.where(x == 0, self.ZI, y)
+        self.AD = anderson_darling(
+            fitted_cdf=self.distribution.CDF(xvals=x, show_plot=False), empirical_cdf=y
+        )
+        GoF_data = {
+            "Goodness of fit": ["Log-likelihood", "AICc", "BIC", "AD"],
+            "Value": [self.loglik, self.AICc, self.BIC, self.AD],
+        }
+        self.goodness_of_fit = pd.DataFrame(
+            GoF_data, columns=["Goodness of fit", "Value"]
+        )
+
+        if print_results is True:
+            CI_rounded = CI * 100
+            if CI_rounded % 1 == 0:
+                CI_rounded = int(CI * 100)
+            frac_censored = round_to_decimals(len(right_censored) / n * 100)
+            if frac_censored % 1 < 1e-10:
+                frac_censored = int(frac_censored)
+            colorprint(
+                str("Results from Fit_Weibull_DSZI (" + str(CI_rounded) + "% CI):"),
+                bold=True,
+                underline=True,
+            )
+            print("Analysis method:", self.method)
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
+            print(
+                "Failures / Right censored:",
+                str(str(len(failures)) + "/" + str(len(right_censored))),
+                str("(" + str(frac_censored) + "% right censored)"),
+                "\n",
+            )
+            print(self.results.to_string(index=False), "\n")
+            print(self.goodness_of_fit.to_string(index=False), "\n")
+
+        if show_probability_plot is True:
+            from reliability.Probability_plotting import (
+                Weibull_probability_plot,
+                plot_points,
+            )
+
+            if len(right_censored) == 0:
+                rc = None
+            else:
+                rc = right_censored
+            Weibull_probability_plot(
+                failures=failures_no_zeros,
+                right_censored=rc,
+                show_fitted_distribution=False,
+                show_scatter_points=False,
+                **kwargs,
+            )
+
+            if "label" in kwargs:
+                label_str = kwargs.pop("label")
+            else:
+                label_str = str(
+                    r"Fitted Weibull_DSZI"
+                    + r" ($\alpha=$"
+                    + str(round_to_decimals(self.alpha, dec))
+                    + r", $\beta=$"
+                    + str(round_to_decimals(self.beta, dec))
+                    + r", $DS=$"
+                    + str(round_to_decimals(self.DS, dec))
+                    + r", $ZI=$"
+                    + str(round_to_decimals(self.ZI, dec))
+                    + ")"
+                )
+            plot_points(
+                failures=failures,
+                right_censored=right_censored,
+                downsample_scatterplot=downsample_scatterplot,
+                **kwargs,
+            )
+
+            xvals = np.logspace(
+                np.log10(min(failures_no_zeros)) - 3,
+                np.log10(max(failures_no_zeros)) + 1,
+                1000,
+            )
+            self.distribution.CDF(xvals=xvals, label=label_str, **kwargs)
+            # need to add this manually as Weibull_probability_plot can only add Weibull_2P and Weibull_3P using __fitted_dist_params
+            plt.title(
+                "Probability Plot\nWeibull Defective Subpopulation Zero Inflated CDF"
+            )
+            self.probability_plot = plt.gca()
+
+    @staticmethod
+    def logf(t, a, b, ds, zi):  # Log PDF (Weibull DSZI)
+        return (
+            (b - 1) * anp.log(t / a) + anp.log(b / a) - (t / a) ** b + anp.log(ds - zi)
+        )
+
+    @staticmethod
+    def logR(t, a, b, ds, zi):  # Log SF (Weibull DSZI)
+        return anp.log(1 - ((1 - anp.exp(-((t / a) ** b))) * (ds - zi) + zi))
+
+    @staticmethod
+    def LL(params, T_0, T_f, T_rc):
+        # log likelihood function (Weibull DSZI)
+        if params[3] > 0:
+            LL_0 = anp.log(params[3]) * len(T_0)  # deals with t=0
+        else:
+            LL_0 = 0  # enables fitting when ZI = 0 to avoid log(0) error
+        LL_f = Fit_Weibull_DSZI.logf(
+            T_f, params[0], params[1], params[2], params[3]
+        ).sum()
+        LL_rc = Fit_Weibull_DSZI.logR(
+            T_rc, params[0], params[1], params[2], params[3]
+        ).sum()
+        return -(LL_0 + LL_f + LL_rc)
+
+
+class Fit_Weibull_DS:
+    """
+    Fits a Weibull Defective Subpopulation (DS) distribution to the data
+    provided. This is a 3 parameter distribution (alpha, beta, DS).
+
+    Parameters
+    ----------
+    failures : array, list
+        An array or list of the failure data. There must be at least 2 failures.
+    right_censored : array, list, optional
+        The right censored data. Optional input. Default = None.
+    show_probability_plot : bool, optional
+        True or False. Default = True
+    print_results : bool, optional
+        Prints a dataframe of the point estimate, standard error, Lower CI and
+        Upper CI for each parameter. True or False. Default = True
+    optimizer : str, optional
+        The optimization algorithm used to find the solution. Must be either
+        'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'. Specifying the optimizer
+        will result in that optimizer being used. To use all of these specify
+        'best' and the best result will be returned. The default behaviour is to
+        try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and
+        'powell') and stop once one of the optimizers finds a solution. If the
+        optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation
+        <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
+    CI : float, optional
+        confidence interval for estimating confidence limits on parameters. Must
+        be between 0 and 1. Default is 0.95 for 95% CI.
+    downsample_scatterplot : bool, int, optional
+        If True or None, and there are over 1000 points, then the scatterplot
+        will be downsampled by a factor. The default downsample factor will seek
+        to produce between 500 and 1000 points. If a number is specified, it
+        will be used as the downsample factor. Default is True. This
+        functionality makes plotting faster when there are very large numbers of
+        points. It only affects the scatterplot not the calculations.
+    kwargs
+        Plotting keywords that are passed directly to matplotlib for the
+        probability plot (e.g. color, label, linestyle)
+
+    Returns
+    -------
+    alpha : float
+        the fitted Weibull_DS alpha parameter
+    beta : float
+        the fitted Weibull_DS beta parameter
+    DS : float
+        the fitted Weibull_DS DS parameter
+    alpha_SE : float
+        the standard error (sqrt(variance)) of the parameter
+    beta_SE :float
+        the standard error (sqrt(variance)) of the parameter
+    DS_SE :float
+        the standard error (sqrt(variance)) of the parameter
+    alpha_upper : float
+        the upper CI estimate of the parameter
+    alpha_lower : float
+        the lower CI estimate of the parameter
+    beta_upper : float
+        the upper CI estimate of the parameter
+    beta_lower : float
+        the lower CI estimate of the parameter
+    DS_upper : float
+        the upper CI estimate of the parameter
+    DS_lower : float
+        the lower CI estimate of the parameter
+    loglik : float
+        Log Likelihood (as used in Minitab and Reliasoft)
+    loglik2 : float
+        LogLikelihood*-2 (as used in JMP Pro)
+    AICc : float
+        Akaike Information Criterion
+    BIC : float
+        Bayesian Information Criterion
+    AD : float
+        the Anderson Darling (corrected) statistic (as reported by Minitab)
+    distribution : object
+        a DSZI_Model object with the parameters of the fitted distribution
+    results : dataframe
+        a pandas dataframe of the results (point estimate, standard error,
+        lower CI and upper CI for each parameter)
+    goodness_of_fit : dataframe
+        a pandas dataframe of the goodness of fit values (Log-likelihood, AICc,
+        BIC, AD).
+    probability_plot : object
+        the axes handle for the probability plot. This is only returned if
+        show_probability_plot = True
+
+    Notes
+    -----
+    If the fitting process encounters a problem a warning will be printed. This
+    may be caused by the chosen distribution being a very poor fit to the data
+    or the data being heavily censored. If a warning is printed, consider trying
+    a different optimizer.
+    """
+
+    def __init__(
+        self,
+        failures=None,
+        right_censored=None,
+        show_probability_plot=True,
+        print_results=True,
+        CI=0.95,
+        optimizer=None,
+        downsample_scatterplot=True,
+        **kwargs,
+    ):
+
+        inputs = fitters_input_checking(
+            dist="Weibull_DS",
+            failures=failures,
+            right_censored=right_censored,
+            optimizer=optimizer,
+            CI=CI,
+        )
+        failures = inputs.failures
+        right_censored = inputs.right_censored
+        CI = inputs.CI
+        optimizer = inputs.optimizer
+
+        # obtain initial estimates of the parameters
+        _, y_pts = plotting_positions(failures=failures, right_censored=right_censored)
+
+        DS_guess = max(y_pts)
+        weibull_2P_fit = Fit_Weibull_2P(
+            failures=failures,
+            right_censored=None,
+            print_results=False,
+            show_probability_plot=False,
+            optimizer=optimizer,
+        )
+        alpha_guess = weibull_2P_fit.alpha
+        beta_guess = weibull_2P_fit.beta
+
+        # maximum likelihood method
+        MLE_results = MLE_optimization(
+            func_name="Weibull_DS",
+            LL_func=Fit_Weibull_DS.LL,
+            initial_guess=[alpha_guess, beta_guess, DS_guess],
+            failures=failures,
+            right_censored=right_censored,
+            optimizer=optimizer,
+        )
+        self.alpha = MLE_results.alpha
+        self.beta = MLE_results.beta
+        self.DS = MLE_results.DS
+        self.method = "Maximum Likelihood Estimation (MLE)"
+        self.optimizer = MLE_results.optimizer
+
+        # confidence interval estimates of parameters. This uses the Fisher Matrix so it can be applied to both MLE and LS estimates.
+        Z = -ss.norm.ppf((1 - CI) / 2)
+        params = [self.alpha, self.beta, self.DS]
+        hessian_matrix = hessian(Fit_Weibull_DS.LL)(
+            np.array(tuple(params)),
+            np.array(tuple(failures)),
+            np.array(tuple(right_censored)),
+        )
+        try:
+            covariance_matrix = np.linalg.inv(hessian_matrix)
+            self.alpha_SE = abs(covariance_matrix[0][0]) ** 0.5
+            self.beta_SE = abs(covariance_matrix[1][1]) ** 0.5
+            self.DS_SE = abs(covariance_matrix[2][2]) ** 0.5
+        except LinAlgError:
+            # this exception is rare but can occur with some optimizers
+            colorprint(
+                str(
+                    "WARNING: The hessian matrix obtained using the "
+                    + self.optimizer
+                    + " optimizer is non-invertable for the Weibull_DS Model.\n"
+                    "Confidence interval estimates of the parameters could not be obtained.\n"
+                    "You may want to try fitting the model using a different optimizer."
+                ),
+                text_color="red",
+            )
+            self.alpha_SE = 0
+            self.beta_SE = 0
+            self.DS_SE = 0
+
+        self.alpha_upper = self.alpha * (np.exp(Z * (self.alpha_SE / self.alpha)))
+        self.alpha_lower = self.alpha * (np.exp(-Z * (self.alpha_SE / self.alpha)))
+        self.beta_upper = self.beta * (np.exp(Z * (self.beta_SE / self.beta)))
+        self.beta_lower = self.beta * (np.exp(-Z * (self.beta_SE / self.beta)))
+        if self.DS == 1:
+            self.DS_lower = 1  # DS=1 causes a divide by zero error for CIs
+            self.DS_upper = 1
+        else:
+            self.DS_upper = self.DS / (
+                self.DS
+                + (1 - self.DS) * (np.exp(-Z * self.DS_SE / (self.DS * (1 - self.DS))))
+            )
+            self.DS_lower = self.DS / (
+                self.DS
+                + (1 - self.DS) * (np.exp(Z * self.DS_SE / (self.DS * (1 - self.DS))))
+            )
+
+        results_data = {
+            "Parameter": ["Alpha", "Beta", "DS"],
+            "Point Estimate": [self.alpha, self.beta, self.DS],
+            "Standard Error": [self.alpha_SE, self.beta_SE, self.DS_SE],
+            "Lower CI": [self.alpha_lower, self.beta_lower, self.DS_lower],
+            "Upper CI": [self.alpha_upper, self.beta_upper, self.DS_upper],
+        }
+        self.results = pd.DataFrame(
+            results_data,
+            columns=[
+                "Parameter",
+                "Point Estimate",
+                "Standard Error",
+                "Lower CI",
+                "Upper CI",
+            ],
+        )
+        self.distribution = DSZI_Model(
+            distribution=Weibull_Distribution(alpha=self.alpha, beta=self.beta),
+            DS=self.DS,
+        )
+
+        # goodness of fit measures
+        n = len(failures) + len(right_censored)
+        k = 3
+        LL2 = 2 * Fit_Weibull_DS.LL(params, failures, right_censored)
+        self.loglik2 = LL2
+        self.loglik = LL2 * -0.5
+        if n - k - 1 > 0:
+            self.AICc = 2 * k + LL2 + (2 * k ** 2 + 2 * k) / (n - k - 1)
+        else:
+            self.AICc = "Insufficient data"
+        self.BIC = np.log(n) * k + LL2
+
+        x, y = plotting_positions(failures=failures, right_censored=right_censored)
+        self.AD = anderson_darling(
+            fitted_cdf=self.distribution.CDF(xvals=x, show_plot=False), empirical_cdf=y
+        )
+        GoF_data = {
+            "Goodness of fit": ["Log-likelihood", "AICc", "BIC", "AD"],
+            "Value": [self.loglik, self.AICc, self.BIC, self.AD],
+        }
+        self.goodness_of_fit = pd.DataFrame(
+            GoF_data, columns=["Goodness of fit", "Value"]
+        )
+
+        if print_results is True:
+            CI_rounded = CI * 100
+            if CI_rounded % 1 == 0:
+                CI_rounded = int(CI * 100)
+            frac_censored = round_to_decimals(len(right_censored) / n * 100)
+            if frac_censored % 1 < 1e-10:
+                frac_censored = int(frac_censored)
+            colorprint(
+                str("Results from Fit_Weibull_DS (" + str(CI_rounded) + "% CI):"),
+                bold=True,
+                underline=True,
+            )
+            print("Analysis method:", self.method)
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
+            print(
+                "Failures / Right censored:",
+                str(str(len(failures)) + "/" + str(len(right_censored))),
+                str("(" + str(frac_censored) + "% right censored)"),
+                "\n",
+            )
+            print(self.results.to_string(index=False), "\n")
+            print(self.goodness_of_fit.to_string(index=False), "\n")
+
+        if show_probability_plot is True:
+            from reliability.Probability_plotting import Weibull_probability_plot
+
+            if len(right_censored) == 0:
+                rc = None
+            else:
+                rc = right_censored
+            Weibull_probability_plot(
+                failures=failures,
+                right_censored=rc,
+                show_fitted_distribution=False,
+                downsample_scatterplot=downsample_scatterplot,
+                **kwargs,
+            )
+            if "label" in kwargs:
+                label_str = kwargs.pop("label")
+            else:
+                label_str = str(
+                    r"Fitted Weibull_DS"
+                    + r" ($\alpha=$"
+                    + str(round_to_decimals(self.alpha, dec))
+                    + r", $\beta=$"
+                    + str(round_to_decimals(self.beta, dec))
+                    + r", $DS=$"
+                    + str(round_to_decimals(self.DS, dec))
+                    + ")"
+                )
+            xvals = np.logspace(
+                np.log10(min(failures)) - 3, np.log10(max(failures)) + 1, 1000
+            )
+            self.distribution.CDF(xvals=xvals, label=label_str, **kwargs)
+            # need to add this manually as Weibull_probability_plot can only add Weibull_2P and Weibull_3P using __fitted_dist_params
+            plt.title("Probability Plot\nWeibull Defective Subpopulation CDF")
+            self.probability_plot = plt.gca()
+
+    @staticmethod
+    def logf(t, a, b, ds):  # Log PDF (Weibull DS)
+        return (b - 1) * anp.log(t / a) + anp.log(b / a) - (t / a) ** b + anp.log(ds)
+
+    @staticmethod
+    def logR(t, a, b, ds):  # Log SF (Weibull DS)
+        return anp.log(1 - ((1 - anp.exp(-((t / a) ** b))) * ds))
+
+    @staticmethod
+    def LL(params, T_f, T_rc):
+        # log likelihood function (Weibull DS)
+        LL_f = Fit_Weibull_DS.logf(T_f, params[0], params[1], params[2]).sum()
+        LL_rc = Fit_Weibull_DS.logR(T_rc, params[0], params[1], params[2]).sum()
+        return -(LL_f + LL_rc)
+
+
+class Fit_Weibull_ZI:
+    """
+    Fits a Weibull Zero Inflated (ZI) distribution to the data
+    provided. This is a 3 parameter distribution (alpha, beta, ZI).
+
+    Parameters
+    ----------
+    failures : array, list
+        An array or list of the failure data. There must be at least 2 non-zero
+        failures.
+    right_censored : array, list, optional
+        The right censored data. Optional input. Default = None.
+    show_probability_plot : bool, optional
+        True or False. Default = True
+    print_results : bool, optional
+        Prints a dataframe of the point estimate, standard error, Lower CI and
+        Upper CI for each parameter. True or False. Default = True
+    optimizer : str, optional
+        The optimization algorithm used to find the solution. Must be either
+        'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'. Specifying the optimizer
+        will result in that optimizer being used. To use all of these specify
+        'best' and the best result will be returned. The default behaviour is to
+        try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and
+        'powell') and stop once one of the optimizers finds a solution. If the
+        optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation
+        <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
+    CI : float, optional
+        confidence interval for estimating confidence limits on parameters. Must
+        be between 0 and 1. Default is 0.95 for 95% CI.
+    downsample_scatterplot : bool, int, optional
+        If True or None, and there are over 1000 points, then the scatterplot
+        will be downsampled by a factor. The default downsample factor will seek
+        to produce between 500 and 1000 points. If a number is specified, it
+        will be used as the downsample factor. Default is True. This
+        functionality makes plotting faster when there are very large numbers of
+        points. It only affects the scatterplot not the calculations.
+    kwargs
+        Plotting keywords that are passed directly to matplotlib for the
+        probability plot (e.g. color, label, linestyle)
+
+    Returns
+    -------
+    alpha : float
+        the fitted Weibull_ZI alpha parameter
+    beta : float
+        the fitted Weibull_ZI beta parameter
+    ZI : float
+        the fitted Weibull_ZI ZI parameter
+    alpha_SE : float
+        the standard error (sqrt(variance)) of the parameter
+    beta_SE :float
+        the standard error (sqrt(variance)) of the parameter
+    ZI_SE :float
+        the standard error (sqrt(variance)) of the parameter.
+    alpha_upper : float
+        the upper CI estimate of the parameter
+    alpha_lower : float
+        the lower CI estimate of the parameter
+    beta_upper : float
+        the upper CI estimate of the parameter
+    beta_lower : float
+        the lower CI estimate of the parameter
+    ZI_upper : float
+        the upper CI estimate of the parameter.
+    ZI_lower : float
+        the lower CI estimate of the parameter.
+    loglik : float
+        Log Likelihood (as used in Minitab and Reliasoft)
+    loglik2 : float
+        LogLikelihood*-2 (as used in JMP Pro)
+    AICc : float
+        Akaike Information Criterion
+    BIC : float
+        Bayesian Information Criterion
+    AD : float
+        the Anderson Darling (corrected) statistic (as reported by Minitab)
+    distribution : object
+        a DSZI_Model object with the parameters of the fitted distribution
+    results : dataframe
+        a pandas dataframe of the results (point estimate, standard error,
+        lower CI and upper CI for each parameter)
+    goodness_of_fit : dataframe
+        a pandas dataframe of the goodness of fit values (Log-likelihood, AICc,
+        BIC, AD).
+    probability_plot : object
+        the axes handle for the probability plot. This is only returned if
+        show_probability_plot = True
+
+    Notes
+    -----
+    If the fitting process encounters a problem a warning will be printed. This
+    may be caused by the chosen distribution being a very poor fit to the data
+    or the data being heavily censored. If a warning is printed, consider trying
+    a different optimizer.
+    """
+
+    def __init__(
+        self,
+        failures=None,
+        right_censored=None,
+        show_probability_plot=True,
+        print_results=True,
+        CI=0.95,
+        optimizer=None,
+        downsample_scatterplot=True,
+        **kwargs,
+    ):
+
+        # need to remove zeros before passing to fitters input checking
+        failures = np.asarray(failures)
+        failures_no_zeros = failures[failures != 0]
+        failures_zeros = failures[failures == 0]
+
+        inputs = fitters_input_checking(
+            dist="Weibull_ZI",
+            failures=failures_no_zeros,
+            right_censored=right_censored,
+            optimizer=optimizer,
+            CI=CI,
+        )
+        failures_no_zeros = inputs.failures
+        right_censored = inputs.right_censored
+        CI = inputs.CI
+        optimizer = inputs.optimizer
+
+        # obtain initial estimates of the parameters
+        weibull_2P_fit = Fit_Weibull_2P(
+            failures=failures_no_zeros,
+            right_censored=right_censored,
+            print_results=False,
+            show_probability_plot=False,
+            optimizer=optimizer,
+            CI=CI,
+        )
+        alpha_guess = weibull_2P_fit.alpha
+        beta_guess = weibull_2P_fit.beta
+        ZI_guess = len(failures_zeros) / (len(failures) + len(right_censored))
+
+        # maximum likelihood method
+        MLE_results = MLE_optimization(
+            func_name="Weibull_ZI",
+            LL_func=Fit_Weibull_ZI.LL,
+            initial_guess=[alpha_guess, beta_guess, ZI_guess],
+            failures=failures,
+            right_censored=right_censored,
+            optimizer=optimizer,
+        )
+        self.alpha = MLE_results.alpha
+        self.beta = MLE_results.beta
+        self.ZI = MLE_results.ZI
+        self.method = "Maximum Likelihood Estimation (MLE)"
+        self.optimizer = MLE_results.optimizer
+
+        # confidence interval estimates of parameters. This uses the Fisher Matrix so it can be applied to both MLE and LS estimates.
+        Z = -ss.norm.ppf((1 - CI) / 2)
+        params = [self.alpha, self.beta, self.ZI]
+        hessian_matrix = hessian(Fit_Weibull_ZI.LL)(
+            np.array(tuple(params)),
+            np.array(tuple(failures_zeros)),
+            np.array(tuple(failures_no_zeros)),
+            np.array(tuple(right_censored)),
+        )
+
+        try:
+            covariance_matrix = np.linalg.inv(hessian_matrix)
+            self.alpha_SE = abs(covariance_matrix[0][0]) ** 0.5
+            self.beta_SE = abs(covariance_matrix[1][1]) ** 0.5
+            self.ZI_SE = abs(covariance_matrix[2][2]) ** 0.5
+        except LinAlgError:
+            # this exception is rare but can occur with some optimizers
+            colorprint(
+                str(
+                    "WARNING: The hessian matrix obtained using the "
+                    + self.optimizer
+                    + " optimizer is non-invertable for the Weibull_ZI Model.\n"
+                    "Confidence interval estimates of the parameters could not be obtained.\n"
+                    "You may want to try fitting the model using a different optimizer."
+                ),
+                text_color="red",
+            )
+            self.alpha_SE = 0
+            self.beta_SE = 0
+            self.ZI_SE = 0
+
+        self.alpha_upper = self.alpha * (np.exp(Z * (self.alpha_SE / self.alpha)))
+        self.alpha_lower = self.alpha * (np.exp(-Z * (self.alpha_SE / self.alpha)))
+        self.beta_upper = self.beta * (np.exp(Z * (self.beta_SE / self.beta)))
+        self.beta_lower = self.beta * (np.exp(-Z * (self.beta_SE / self.beta)))
+        if self.ZI == 0:
+            self.ZI_upper = 0  # ZI = 0 causes a divide by zero error for CIs
+            self.ZI_lower = 0
+        else:
+            self.ZI_upper = self.ZI / (
+                self.ZI
+                + (1 - self.ZI) * (np.exp(-Z * self.ZI_SE / (self.ZI * (1 - self.ZI))))
+            )
+            self.ZI_lower = self.ZI / (
+                self.ZI
+                + (1 - self.ZI) * (np.exp(Z * self.ZI_SE / (self.ZI * (1 - self.ZI))))
+            )
+
+        results_data = {
+            "Parameter": ["Alpha", "Beta", "ZI"],
+            "Point Estimate": [self.alpha, self.beta, self.ZI],
+            "Standard Error": [self.alpha_SE, self.beta_SE, self.ZI_SE],
+            "Lower CI": [self.alpha_lower, self.beta_lower, self.ZI_lower],
+            "Upper CI": [self.alpha_upper, self.beta_upper, self.ZI_upper],
+        }
+        self.results = pd.DataFrame(
+            results_data,
+            columns=[
+                "Parameter",
+                "Point Estimate",
+                "Standard Error",
+                "Lower CI",
+                "Upper CI",
+            ],
+        )
+        self.distribution = DSZI_Model(
+            distribution=Weibull_Distribution(alpha=self.alpha, beta=self.beta),
+            ZI=self.ZI,
+        )
+
+        # goodness of fit measures
+        n = len(failures) + len(right_censored)
+        k = 3
+        LL2 = 2 * Fit_Weibull_ZI.LL(
+            params, failures_zeros, failures_no_zeros, right_censored
+        )
+        self.loglik2 = LL2
+        self.loglik = LL2 * -0.5
+        if n - k - 1 > 0:
+            self.AICc = 2 * k + LL2 + (2 * k ** 2 + 2 * k) / (n - k - 1)
+        else:
+            self.AICc = "Insufficient data"
+        self.BIC = np.log(n) * k + LL2
+
+        x, y = plotting_positions(failures=failures, right_censored=right_censored)
+        # moves all the y values for the x=0 points to be equal to the value of ZI.
+        y = np.where(x == 0, self.ZI, y)
+        self.AD = anderson_darling(
+            fitted_cdf=self.distribution.CDF(xvals=x, show_plot=False), empirical_cdf=y
+        )
+        GoF_data = {
+            "Goodness of fit": ["Log-likelihood", "AICc", "BIC", "AD"],
+            "Value": [self.loglik, self.AICc, self.BIC, self.AD],
+        }
+        self.goodness_of_fit = pd.DataFrame(
+            GoF_data, columns=["Goodness of fit", "Value"]
+        )
+
+        if print_results is True:
+            CI_rounded = CI * 100
+            if CI_rounded % 1 == 0:
+                CI_rounded = int(CI * 100)
+            frac_censored = round_to_decimals(len(right_censored) / n * 100)
+            if frac_censored % 1 < 1e-10:
+                frac_censored = int(frac_censored)
+            colorprint(
+                str("Results from Fit_Weibull_ZI (" + str(CI_rounded) + "% CI):"),
+                bold=True,
+                underline=True,
+            )
+            print("Analysis method:", self.method)
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
+            print(
+                "Failures / Right censored:",
+                str(str(len(failures)) + "/" + str(len(right_censored))),
+                str("(" + str(frac_censored) + "% right censored)"),
+                "\n",
+            )
+            print(self.results.to_string(index=False), "\n")
+            print(self.goodness_of_fit.to_string(index=False), "\n")
+
+        if show_probability_plot is True:
+            from reliability.Probability_plotting import (
+                Weibull_probability_plot,
+                plot_points,
+            )
+
+            if len(right_censored) == 0:
+                rc = None
+            else:
+                rc = right_censored
+            Weibull_probability_plot(
+                failures=failures_no_zeros,
+                right_censored=rc,
+                show_fitted_distribution=False,
+                show_scatter_points=False,
+                **kwargs,
+            )
+            if "label" in kwargs:
+                label_str = kwargs.pop("label")
+            else:
+                label_str = str(
+                    r"Fitted Weibull_ZI"
+                    + r" ($\alpha=$"
+                    + str(round_to_decimals(self.alpha, dec))
+                    + r", $\beta=$"
+                    + str(round_to_decimals(self.beta, dec))
+                    + r", $ZI=$"
+                    + str(round_to_decimals(self.ZI, dec))
+                    + ")"
+                )
+            plot_points(
+                failures=failures,
+                right_censored=right_censored,
+                downsample_scatterplot=downsample_scatterplot,
+                **kwargs,
+            )
+            xvals = np.logspace(
+                np.log10(min(failures_no_zeros)) - 3,
+                np.log10(max(failures_no_zeros)) + 1,
+                1000,
+            )
+            self.distribution.CDF(xvals=xvals, label=label_str, **kwargs)
+            # need to add this manually as Weibull_probability_plot can only add Weibull_2P and Weibull_3P using __fitted_dist_params
+            plt.title("Probability Plot\nWeibull Zero Inflated CDF")
+            self.probability_plot = plt.gca()
+
+    @staticmethod
+    def logf(t, a, b, zi):  # Log PDF (Weibull ZI)
+        return (
+            (b - 1) * anp.log(t / a) + anp.log(b / a) - (t / a) ** b + anp.log(1 - zi)
+        )
+
+    @staticmethod
+    def logR(t, a, b, zi):  # Log SF (Weibull ZI)
+        return anp.log(1 - ((1 - anp.exp(-((t / a) ** b))) * (1 - zi) + zi))
+
+    @staticmethod
+    def LL(params, T_0, T_f, T_rc):
+        # log likelihood function (Weibull ZI)
+        if params[2] > 0:
+            LL_0 = anp.log(params[2]) * len(T_0)  # deals with t=0
+        else:
+            LL_0 = 0  # enables fitting when ZI = 0 to avoid log(0) error
+        LL_f = Fit_Weibull_ZI.logf(T_f, params[0], params[1], params[2]).sum()
+        LL_rc = Fit_Weibull_ZI.logR(T_rc, params[0], params[1], params[2]).sum()
+        return -(LL_0 + LL_f + LL_rc)
+
+
 class Fit_Exponential_1P:
     """
     Fits a one parameter Exponential distribution (Lambda) to the data provided.
@@ -3792,14 +5389,15 @@ class Fit_Exponential_1P:
         regression on X), or 'RRY' (Rank regression on Y). LS will perform both
         RRX and RRY and return the better one. Default is 'MLE'.
     optimizer : str, optional
-        The optimisation algorithm used to find the solution. Must be either
-        'L-BFGS-B', 'TNC', or 'powell'. These are all bound constrained methods.
-        If the bounded method fails, 'nelder-mead' will be used. If
-        'nelder-mead' fails then the initial guess will be returned with a
-        warning. For more information on these optimizers see
-        https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.minimize.html#scipy.optimize.minimize
-        Default is 'L-BFGS-B' if the data is <= 97% right censored or 'TNC' if
-        the data is > 97% right censored.
+        The optimization algorithm used to find the solution. Must be either
+        'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'. Specifying the optimizer
+        will result in that optimizer being used. To use all of these specify
+        'best' and the best result will be returned. The default behaviour is to
+        try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and
+        'powell') and stop once one of the optimizers finds a solution. If the
+        optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation
+        <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
     CI : float, optional
         confidence interval for estimating confidence limits on parameters. Must
         be between 0 and 1. Default is 0.95 for 95% CI.
@@ -3811,6 +5409,13 @@ class Fit_Exponential_1P:
         If an array or list is specified then it will be used instead of the
         default array. Any array or list specified must contain values between
         0 and 100.
+    downsample_scatterplot : bool, int, optional
+        If True or None, and there are over 1000 points, then the scatterplot
+        will be downsampled by a factor. The default downsample factor will seek
+        to produce between 500 and 1000 points. If a number is specified, it
+        will be used as the downsample factor. Default is True. This
+        functionality makes plotting faster when there are very large numbers of
+        points. It only affects the scatterplot not the calculations.
     kwargs
         Plotting keywords that are passed directly to matplotlib for the
         probability plot (e.g. color, label, linestyle)
@@ -3871,7 +5476,7 @@ class Fit_Exponential_1P:
     If the fitting process encounters a problem a warning will be printed. This
     may be caused by the chosen distribution being a very poor fit to the data
     or the data being heavily censored. If a warning is printed, consider trying
-    a different optimiser.
+    a different optimizer.
     """
 
     def __init__(
@@ -3884,6 +5489,7 @@ class Fit_Exponential_1P:
         percentiles=None,
         method="MLE",
         optimizer=None,
+        downsample_scatterplot=True,
         **kwargs,
     ):
 
@@ -3909,7 +5515,7 @@ class Fit_Exponential_1P:
             LS_method = "LS"
         else:
             LS_method = method
-        LS_results = LS_optimisation(
+        LS_results = LS_optimization(
             func_name="Exponential_1P",
             LL_func=Fit_Exponential_1P.LL,
             failures=failures,
@@ -3921,10 +5527,10 @@ class Fit_Exponential_1P:
         if method in ["LS", "RRX", "RRY"]:
             self.Lambda = LS_results.guess[0]
             self.method = str("Least Squares Estimation (" + LS_results.method + ")")
-
+            self.optimizer = None
         # maximum likelihood method
         elif method == "MLE":
-            MLE_results = MLE_optimisation(
+            MLE_results = MLE_optimization(
                 func_name="Exponential_1P",
                 LL_func=Fit_Exponential_1P.LL,
                 initial_guess=[LS_results.guess[0]],
@@ -3934,6 +5540,7 @@ class Fit_Exponential_1P:
             )
             self.Lambda = MLE_results.scale
             self.method = "Maximum Likelihood Estimation (MLE)"
+            self.optimizer = MLE_results.optimizer
 
         # confidence interval estimates of parameters
         Z = -ss.norm.ppf((1 - CI) / 2)
@@ -3943,16 +5550,40 @@ class Fit_Exponential_1P:
             np.array(tuple(failures)),
             np.array(tuple(right_censored)),
         )
-        covariance_matrix = np.linalg.inv(hessian_matrix)
-        self.Lambda_SE = abs(covariance_matrix[0][0]) ** 0.5
-        self.Lambda_upper = self.Lambda * (np.exp(Z * (self.Lambda_SE / self.Lambda)))
-        self.Lambda_lower = self.Lambda * (np.exp(-Z * (self.Lambda_SE / self.Lambda)))
-        self.Lambda_inv = 1 / self.Lambda
-        self.Lambda_SE_inv = abs(
-            1 / self.Lambda * np.log(self.Lambda / self.Lambda_upper) / Z
-        )
-        self.Lambda_lower_inv = 1 / self.Lambda_upper
-        self.Lambda_upper_inv = 1 / self.Lambda_lower
+        try:
+            covariance_matrix = np.linalg.inv(hessian_matrix)
+            self.Lambda_SE = abs(covariance_matrix[0][0]) ** 0.5
+            self.Lambda_upper = self.Lambda * (
+                np.exp(Z * (self.Lambda_SE / self.Lambda))
+            )
+            self.Lambda_lower = self.Lambda * (
+                np.exp(-Z * (self.Lambda_SE / self.Lambda))
+            )
+            self.Lambda_inv = 1 / self.Lambda
+            self.Lambda_SE_inv = abs(
+                1 / self.Lambda * np.log(self.Lambda / self.Lambda_upper) / Z
+            )
+            self.Lambda_lower_inv = 1 / self.Lambda_upper
+            self.Lambda_upper_inv = 1 / self.Lambda_lower
+        except LinAlgError:
+            # this exception is rare but can occur with some optimizers
+            colorprint(
+                str(
+                    "WARNING: The hessian matrix obtained using the "
+                    + self.optimizer
+                    + " optimizer is non-invertable for the Exponential_1P model.\n"
+                    "Confidence interval estimates of the parameters could not be obtained.\n"
+                    "You may want to try fitting the model using a different optimizer."
+                ),
+                text_color="red",
+            )
+            self.Lambda_SE = 0
+            self.Lambda_upper = self.Lambda
+            self.Lambda_lower = self.Lambda
+            self.Lambda_inv = 1 / self.Lambda
+            self.Lambda_SE_inv = 0
+            self.Lambda_lower_inv = 1 / self.Lambda
+            self.Lambda_upper_inv = 1 / self.Lambda
 
         results_data = {
             "Parameter": ["Lambda", "1/Lambda"],
@@ -4036,6 +5667,8 @@ class Fit_Exponential_1P:
                 underline=True,
             )
             print("Analysis method:", self.method)
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
             print(
                 "Failures / Right censored:",
                 str(str(len(failures)) + "/" + str(len(right_censored))),
@@ -4069,6 +5702,7 @@ class Fit_Exponential_1P:
                 right_censored=rc,
                 __fitted_dist_params=self,
                 CI=CI,
+                downsample_scatterplot=downsample_scatterplot,
                 **kwargs,
             )
             self.probability_plot = plt.gca()
@@ -4111,14 +5745,15 @@ class Fit_Exponential_2P:
         regression on X), or 'RRY' (Rank regression on Y). LS will perform both
         RRX and RRY and return the better one. Default is 'MLE'.
     optimizer : str, optional
-        The optimisation algorithm used to find the solution. Must be either
-        'L-BFGS-B', 'TNC', or 'powell'. These are all bound constrained methods.
-        If the bounded method fails, 'nelder-mead' will be used. If
-        'nelder-mead' fails then the initial guess will be returned with a
-        warning. For more information on these optimizers see
-        https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.minimize.html#scipy.optimize.minimize
-        Default is 'L-BFGS-B' if the data is <= 97% right censored or 'TNC' if
-        the data is > 97% right censored.
+        The optimization algorithm used to find the solution. Must be either
+        'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'. Specifying the optimizer
+        will result in that optimizer being used. To use all of these specify
+        'best' and the best result will be returned. The default behaviour is to
+        try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and
+        'powell') and stop once one of the optimizers finds a solution. If the
+        optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation
+        <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
     CI : float, optional
         confidence interval for estimating confidence limits on parameters. Must
         be between 0 and 1. Default is 0.95 for 95% CI.
@@ -4130,6 +5765,13 @@ class Fit_Exponential_2P:
         If an array or list is specified then it will be used instead of the
         default array. Any array or list specified must contain values between
         0 and 100.
+    downsample_scatterplot : bool, int, optional
+        If True or None, and there are over 1000 points, then the scatterplot
+        will be downsampled by a factor. The default downsample factor will seek
+        to produce between 500 and 1000 points. If a number is specified, it
+        will be used as the downsample factor. Default is True. This
+        functionality makes plotting faster when there are very large numbers of
+        points. It only affects the scatterplot not the calculations.
     kwargs
         Plotting keywords that are passed directly to matplotlib for the
         probability plot (e.g. color, label, linestyle)
@@ -4198,7 +5840,7 @@ class Fit_Exponential_2P:
     If the fitting process encounters a problem a warning will be printed. This
     may be caused by the chosen distribution being a very poor fit to the data
     or the data being heavily censored. If a warning is printed, consider trying
-    a different optimiser.
+    a different optimizer.
     """
 
     def __init__(
@@ -4211,12 +5853,13 @@ class Fit_Exponential_2P:
         percentiles=None,
         method="MLE",
         optimizer=None,
+        downsample_scatterplot=True,
         **kwargs,
     ):
         # To obtain the confidence intervals of the parameters, the gamma parameter is estimated by optimizing the log-likelihood function but
         # it is assumed as fixed because the variance-covariance matrix of the estimated parameters cannot be determined numerically. By assuming
         # the standard error in gamma is zero, we can use Exponential_1P to obtain the confidence intervals for Lambda. This is the same procedure
-        # performed by both Reliasoft and Minitab. You may find the results are slightly different to Minitab and this is because the optimisation
+        # performed by both Reliasoft and Minitab. You may find the results are slightly different to Minitab and this is because the optimization
         # of gamma is done more efficiently here than Minitab does it. This is evidenced by comparing the log-likelihood for the same data input.
 
         inputs = fitters_input_checking(
@@ -4240,7 +5883,7 @@ class Fit_Exponential_2P:
             LS_method = "LS"
         else:
             LS_method = method
-        LS_results = LS_optimisation(
+        LS_results = LS_optimization(
             func_name="Exponential_2P",
             LL_func=Fit_Exponential_2P.LL,
             failures=failures,
@@ -4253,13 +5896,13 @@ class Fit_Exponential_2P:
             self.Lambda = LS_results.guess[0]
             self.gamma = LS_results.guess[1]
             self.method = str("Least Squares Estimation (" + LS_results.method + ")")
-
+            self.optimizer = None
         # maximum likelihood method
         elif method == "MLE":
             if (
                 LS_results.guess[0] < 1
             ):  # The reason for having an inverted and non-inverted cases is due to the gradient being too shallow in some cases. If Lambda<1 we invert it so it's bigger. This prevents the gradient getting too shallow for the optimizer to find the correct minimum.
-                MLE_results = MLE_optimisation(
+                MLE_results = MLE_optimization(
                     func_name="Exponential_2P",
                     LL_func=Fit_Exponential_2P.LL_inv,
                     initial_guess=[1 / LS_results.guess[0], LS_results.guess[1]],
@@ -4269,7 +5912,7 @@ class Fit_Exponential_2P:
                 )
                 self.Lambda = 1 / MLE_results.scale
             else:
-                MLE_results = MLE_optimisation(
+                MLE_results = MLE_optimization(
                     func_name="Exponential_2P",
                     LL_func=Fit_Exponential_2P.LL,
                     initial_guess=[LS_results.guess[0], LS_results.guess[1]],
@@ -4280,8 +5923,9 @@ class Fit_Exponential_2P:
                 self.Lambda = MLE_results.scale
             self.gamma = MLE_results.gamma
             self.method = "Maximum Likelihood Estimation (MLE)"
+            self.optimizer = MLE_results.optimizer
 
-        # confidence interval estimates of parameters. Uses Exponential_1P because gamma (while optimized) cannot be used in the MLE solution as the solution is unbounded
+        # confidence interval estimates of parameters. Uses Exponential_1P because gamma (while optimized) cannot be used in the MLE solution as the solution is unbounded. This is why there are no CI limits on gamma.
         Z = -ss.norm.ppf((1 - CI) / 2)
         params_1P = [self.Lambda]
         params_2P = [self.Lambda, self.gamma]
@@ -4290,19 +5934,46 @@ class Fit_Exponential_2P:
             np.array(tuple(failures - self.gamma)),
             np.array(tuple(right_censored - self.gamma)),
         )
-        covariance_matrix = np.linalg.inv(hessian_matrix)
-        self.Lambda_SE = abs(covariance_matrix[0][0]) ** 0.5
-        self.gamma_SE = 0
-        self.Lambda_upper = self.Lambda * (np.exp(Z * (self.Lambda_SE / self.Lambda)))
-        self.Lambda_lower = self.Lambda * (np.exp(-Z * (self.Lambda_SE / self.Lambda)))
-        self.gamma_upper = self.gamma
-        self.gamma_lower = self.gamma
-        self.Lambda_inv = 1 / self.Lambda
-        self.Lambda_SE_inv = abs(
-            1 / self.Lambda * np.log(self.Lambda / self.Lambda_upper) / Z
-        )
-        self.Lambda_lower_inv = 1 / self.Lambda_upper
-        self.Lambda_upper_inv = 1 / self.Lambda_lower
+        try:
+            covariance_matrix = np.linalg.inv(hessian_matrix)
+            self.Lambda_SE = abs(covariance_matrix[0][0]) ** 0.5
+            self.gamma_SE = 0
+            self.Lambda_upper = self.Lambda * (
+                np.exp(Z * (self.Lambda_SE / self.Lambda))
+            )
+            self.Lambda_lower = self.Lambda * (
+                np.exp(-Z * (self.Lambda_SE / self.Lambda))
+            )
+            self.gamma_upper = self.gamma
+            self.gamma_lower = self.gamma
+            self.Lambda_inv = 1 / self.Lambda
+            self.Lambda_SE_inv = abs(
+                1 / self.Lambda * np.log(self.Lambda / self.Lambda_upper) / Z
+            )
+            self.Lambda_lower_inv = 1 / self.Lambda_upper
+            self.Lambda_upper_inv = 1 / self.Lambda_lower
+        except LinAlgError:
+            # this exception is rare but can occur with some optimizers
+            colorprint(
+                str(
+                    "WARNING: The hessian matrix obtained using the "
+                    + self.optimizer
+                    + " optimizer is non-invertable for the Exponential_2P model.\n"
+                    "Confidence interval estimates of the parameters could not be obtained.\n"
+                    "You may want to try fitting the model using a different optimizer."
+                ),
+                text_color="red",
+            )
+            self.Lambda_SE = 0
+            self.gamma_SE = 0
+            self.Lambda_upper = self.Lambda
+            self.Lambda_lower = self.Lambda
+            self.gamma_upper = self.gamma
+            self.gamma_lower = self.gamma
+            self.Lambda_inv = 1 / self.Lambda
+            self.Lambda_SE_inv = 0
+            self.Lambda_lower_inv = 1 / self.Lambda
+            self.Lambda_upper_inv = 1 / self.Lambda
 
         results_data = {
             "Parameter": ["Lambda", "1/Lambda", "Gamma"],
@@ -4387,6 +6058,8 @@ class Fit_Exponential_2P:
                 underline=True,
             )
             print("Analysis method:", self.method)
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
             print(
                 "Failures / Right censored:",
                 str(str(len(failures)) + "/" + str(len(right_censored))),
@@ -4420,6 +6093,7 @@ class Fit_Exponential_2P:
                 right_censored=rc,
                 CI=CI,
                 __fitted_dist_params=self,
+                downsample_scatterplot=downsample_scatterplot,
                 **kwargs,
             )
             self.probability_plot = plt.gca()
@@ -4473,14 +6147,15 @@ class Fit_Normal_2P:
         regression on X), or 'RRY' (Rank regression on Y). LS will perform both
         RRX and RRY and return the better one. Default is 'MLE'.
     optimizer : str, optional
-        The optimisation algorithm used to find the solution. Must be either
-        'L-BFGS-B', 'TNC', or 'powell'. These are all bound constrained methods.
-        If the bounded method fails, 'nelder-mead' will be used. If
-        'nelder-mead' fails then the initial guess will be returned with a
-        warning. For more information on these optimizers see
-        https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.minimize.html#scipy.optimize.minimize
-        Default is 'L-BFGS-B' if the data is <= 97% right censored or 'TNC' if
-        the data is > 97% right censored.
+        The optimization algorithm used to find the solution. Must be either
+        'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'. Specifying the optimizer
+        will result in that optimizer being used. To use all of these specify
+        'best' and the best result will be returned. The default behaviour is to
+        try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and
+        'powell') and stop once one of the optimizers finds a solution. If the
+        optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation
+        <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
     CI : float, optional
         confidence interval for estimating confidence limits on parameters. Must
         be between 0 and 1. Default is 0.95 for 95% CI.
@@ -4501,6 +6176,13 @@ class Fit_Normal_2P:
         If an array or list is specified then it will be used instead of the
         default array. Any array or list specified must contain values between
         0 and 100.
+    downsample_scatterplot : bool, int, optional
+        If True or None, and there are over 1000 points, then the scatterplot
+        will be downsampled by a factor. The default downsample factor will seek
+        to produce between 500 and 1000 points. If a number is specified, it
+        will be used as the downsample factor. Default is True. This
+        functionality makes plotting faster when there are very large numbers of
+        points. It only affects the scatterplot not the calculations.
     kwargs
         Plotting keywords that are passed directly to matplotlib for the
         probability plot (e.g. color, label, linestyle)
@@ -4557,7 +6239,7 @@ class Fit_Normal_2P:
     If the fitting process encounters a problem a warning will be printed. This
     may be caused by the chosen distribution being a very poor fit to the data
     or the data being heavily censored. If a warning is printed, consider trying
-    a different optimiser.
+    a different optimizer.
     """
 
     def __init__(
@@ -4572,6 +6254,7 @@ class Fit_Normal_2P:
         CI_type="time",
         method="MLE",
         force_sigma=None,
+        downsample_scatterplot=True,
         **kwargs,
     ):
 
@@ -4600,7 +6283,7 @@ class Fit_Normal_2P:
             LS_method = "LS"
         else:
             LS_method = method
-        LS_results = LS_optimisation(
+        LS_results = LS_optimization(
             func_name="Normal_2P",
             LL_func=Fit_Normal_2P.LL,
             failures=failures,
@@ -4615,10 +6298,10 @@ class Fit_Normal_2P:
             self.mu = LS_results.guess[0]
             self.sigma = LS_results.guess[1]
             self.method = str("Least Squares Estimation (" + LS_results.method + ")")
-
+            self.optimizer = None
         # maximum likelihood method
         elif method == "MLE":
-            MLE_results = MLE_optimisation(
+            MLE_results = MLE_optimization(
                 func_name="Normal_2P",
                 LL_func=Fit_Normal_2P.LL,
                 initial_guess=[LS_results.guess[0], LS_results.guess[1]],
@@ -4631,6 +6314,7 @@ class Fit_Normal_2P:
             self.mu = MLE_results.scale
             self.sigma = MLE_results.shape
             self.method = "Maximum Likelihood Estimation (MLE)"
+            self.optimizer = MLE_results.optimizer
 
         # confidence interval estimates of parameters
         Z = -ss.norm.ppf((1 - CI) / 2)
@@ -4641,16 +6325,41 @@ class Fit_Normal_2P:
                 np.array(tuple(failures)),
                 np.array(tuple(right_censored)),
             )
-            covariance_matrix = np.linalg.inv(hessian_matrix)
-            self.mu_SE = abs(covariance_matrix[0][0]) ** 0.5
-            self.sigma_SE = abs(covariance_matrix[1][1]) ** 0.5
-            self.Cov_mu_sigma = covariance_matrix[0][1]
-            self.mu_upper = self.mu + (
-                Z * self.mu_SE
-            )  # these are unique to normal and lognormal mu params
-            self.mu_lower = self.mu + (-Z * self.mu_SE)
-            self.sigma_upper = self.sigma * (np.exp(Z * (self.sigma_SE / self.sigma)))
-            self.sigma_lower = self.sigma * (np.exp(-Z * (self.sigma_SE / self.sigma)))
+            try:
+                covariance_matrix = np.linalg.inv(hessian_matrix)
+                self.mu_SE = abs(covariance_matrix[0][0]) ** 0.5
+                self.sigma_SE = abs(covariance_matrix[1][1]) ** 0.5
+                self.Cov_mu_sigma = covariance_matrix[0][1]
+                self.mu_upper = self.mu + (
+                    Z * self.mu_SE
+                )  # these are unique to normal and lognormal mu params
+                self.mu_lower = self.mu + (-Z * self.mu_SE)
+                self.sigma_upper = self.sigma * (
+                    np.exp(Z * (self.sigma_SE / self.sigma))
+                )
+                self.sigma_lower = self.sigma * (
+                    np.exp(-Z * (self.sigma_SE / self.sigma))
+                )
+            except LinAlgError:
+                # this exception is rare but can occur with some optimizers
+                colorprint(
+                    str(
+                        "WARNING: The hessian matrix obtained using the "
+                        + self.optimizer
+                        + " optimizer is non-invertable for the Normal_2P model.\n"
+                        "Confidence interval estimates of the parameters could not be obtained.\n"
+                        "You may want to try fitting the model using a different optimizer."
+                    ),
+                    text_color="red",
+                )
+                self.mu_SE = 0
+                self.sigma_SE = 0
+                self.Cov_mu_sigma = 0
+                self.mu_upper = self.mu
+                self.mu_lower = self.mu
+                self.sigma_upper = self.sigma
+                self.sigma_lower = self.sigma
+
         else:
             hessian_matrix = hessian(Fit_Normal_2P.LL_fs)(
                 np.array(tuple([self.mu])),
@@ -4658,16 +6367,36 @@ class Fit_Normal_2P:
                 np.array(tuple(right_censored)),
                 np.array(tuple([force_sigma])),
             )
-            covariance_matrix = np.linalg.inv(hessian_matrix)
-            self.mu_SE = abs(covariance_matrix[0][0]) ** 0.5
-            self.sigma_SE = 0
-            self.Cov_mu_sigma = 0
-            self.mu_upper = self.mu + (
-                Z * self.mu_SE
-            )  # these are unique to normal and lognormal mu params
-            self.mu_lower = self.mu + (-Z * self.mu_SE)
-            self.sigma_upper = self.sigma
-            self.sigma_lower = self.sigma
+            try:
+                covariance_matrix = np.linalg.inv(hessian_matrix)
+                self.mu_SE = abs(covariance_matrix[0][0]) ** 0.5
+                self.sigma_SE = 0
+                self.Cov_mu_sigma = 0
+                self.mu_upper = self.mu + (
+                    Z * self.mu_SE
+                )  # these are unique to normal and lognormal mu params
+                self.mu_lower = self.mu + (-Z * self.mu_SE)
+                self.sigma_upper = self.sigma
+                self.sigma_lower = self.sigma
+            except LinAlgError:
+                # this exception is rare but can occur with some optimizers
+                colorprint(
+                    str(
+                        "WARNING: The hessian matrix obtained using the "
+                        + self.optimizer
+                        + " optimizer is non-invertable for the Normal_2P model.\n"
+                        "Confidence interval estimates of the parameters could not be obtained.\n"
+                        "You may want to try fitting the model using a different optimizer."
+                    ),
+                    text_color="red",
+                )
+                self.mu_SE = 0
+                self.sigma_SE = 0
+                self.Cov_mu_sigma = 0
+                self.mu_upper = self.mu
+                self.mu_lower = self.mu
+                self.sigma_upper = self.sigma
+                self.sigma_lower = self.sigma
 
         results_data = {
             "Parameter": ["Mu", "Sigma"],
@@ -4767,6 +6496,8 @@ class Fit_Normal_2P:
                 underline=True,
             )
             print("Analysis method:", self.method)
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
             print(
                 "Failures / Right censored:",
                 str(str(len(failures)) + "/" + str(len(right_censored))),
@@ -4799,6 +6530,7 @@ class Fit_Normal_2P:
                 __fitted_dist_params=self,
                 CI=CI,
                 CI_type=CI_type,
+                downsample_scatterplot=downsample_scatterplot,
                 **kwargs,
             )
             self.probability_plot = plt.gca()
@@ -4851,14 +6583,15 @@ class Fit_Gumbel_2P:
         regression on X), or 'RRY' (Rank regression on Y). LS will perform both
         RRX and RRY and return the better one. Default is 'MLE'.
     optimizer : str, optional
-        The optimisation algorithm used to find the solution. Must be either
-        'L-BFGS-B', 'TNC', or 'powell'. These are all bound constrained methods.
-        If the bounded method fails, 'nelder-mead' will be used. If
-        'nelder-mead' fails then the initial guess will be returned with a
-        warning. For more information on these optimizers see
-        https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.minimize.html#scipy.optimize.minimize
-        Default is 'L-BFGS-B' if the data is <= 97% right censored or 'TNC' if
-        the data is > 97% right censored.
+        The optimization algorithm used to find the solution. Must be either
+        'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'. Specifying the optimizer
+        will result in that optimizer being used. To use all of these specify
+        'best' and the best result will be returned. The default behaviour is to
+        try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and
+        'powell') and stop once one of the optimizers finds a solution. If the
+        optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation
+        <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
     CI : float, optional
         confidence interval for estimating confidence limits on parameters. Must
         be between 0 and 1. Default is 0.95 for 95% CI.
@@ -4875,6 +6608,13 @@ class Fit_Gumbel_2P:
         If an array or list is specified then it will be used instead of the
         default array. Any array or list specified must contain values between
         0 and 100.
+    downsample_scatterplot : bool, int, optional
+        If True or None, and there are over 1000 points, then the scatterplot
+        will be downsampled by a factor. The default downsample factor will seek
+        to produce between 500 and 1000 points. If a number is specified, it
+        will be used as the downsample factor. Default is True. This
+        functionality makes plotting faster when there are very large numbers of
+        points. It only affects the scatterplot not the calculations.
     kwargs
         Plotting keywords that are passed directly to matplotlib for the
         probability plot (e.g. color, label, linestyle).
@@ -4934,7 +6674,7 @@ class Fit_Gumbel_2P:
     If the fitting process encounters a problem a warning will be printed. This
     may be caused by the chosen distribution being a very poor fit to the data
     or the data being heavily censored. If a warning is printed, consider trying
-    a different optimiser.
+    a different optimizer.
     """
 
     def __init__(
@@ -4948,6 +6688,7 @@ class Fit_Gumbel_2P:
         CI_type="time",
         method="MLE",
         optimizer=None,
+        downsample_scatterplot=True,
         **kwargs,
     ):
 
@@ -4974,7 +6715,7 @@ class Fit_Gumbel_2P:
             LS_method = "LS"
         else:
             LS_method = method
-        LS_results = LS_optimisation(
+        LS_results = LS_optimization(
             func_name="Gumbel_2P",
             LL_func=Fit_Gumbel_2P.LL,
             failures=failures,
@@ -4987,10 +6728,10 @@ class Fit_Gumbel_2P:
             self.mu = LS_results.guess[0]
             self.sigma = LS_results.guess[1]
             self.method = str("Least Squares Estimation (" + LS_results.method + ")")
-
+            self.optimizer = None
         # maximum likelihood method
         elif method == "MLE":
-            MLE_results = MLE_optimisation(
+            MLE_results = MLE_optimization(
                 func_name="Gumbel_2P",
                 LL_func=Fit_Gumbel_2P.LL,
                 initial_guess=[LS_results.guess[0], LS_results.guess[1]],
@@ -5001,6 +6742,7 @@ class Fit_Gumbel_2P:
             self.mu = MLE_results.scale
             self.sigma = MLE_results.shape
             self.method = "Maximum Likelihood Estimation (MLE)"
+            self.optimizer = MLE_results.optimizer
 
         # confidence interval estimates of parameters
         Z = -ss.norm.ppf((1 - CI) / 2)
@@ -5010,16 +6752,36 @@ class Fit_Gumbel_2P:
             np.array(tuple(failures)),
             np.array(tuple(right_censored)),
         )
-        covariance_matrix = np.linalg.inv(hessian_matrix)
-        self.mu_SE = abs(covariance_matrix[0][0]) ** 0.5
-        self.sigma_SE = abs(covariance_matrix[1][1]) ** 0.5
-        self.Cov_mu_sigma = covariance_matrix[0][1]
-        self.mu_upper = self.mu + (
-            Z * self.mu_SE
-        )  # these are unique to gumbel, normal and lognormal mu params
-        self.mu_lower = self.mu + (-Z * self.mu_SE)
-        self.sigma_upper = self.sigma * (np.exp(Z * (self.sigma_SE / self.sigma)))
-        self.sigma_lower = self.sigma * (np.exp(-Z * (self.sigma_SE / self.sigma)))
+        try:
+            covariance_matrix = np.linalg.inv(hessian_matrix)
+            self.mu_SE = abs(covariance_matrix[0][0]) ** 0.5
+            self.sigma_SE = abs(covariance_matrix[1][1]) ** 0.5
+            self.Cov_mu_sigma = covariance_matrix[0][1]
+            self.mu_upper = self.mu + (
+                Z * self.mu_SE
+            )  # these are unique to gumbel, normal and lognormal mu params
+            self.mu_lower = self.mu + (-Z * self.mu_SE)
+            self.sigma_upper = self.sigma * (np.exp(Z * (self.sigma_SE / self.sigma)))
+            self.sigma_lower = self.sigma * (np.exp(-Z * (self.sigma_SE / self.sigma)))
+        except LinAlgError:
+            # this exception is rare but can occur with some optimizers
+            colorprint(
+                str(
+                    "WARNING: The hessian matrix obtained using the "
+                    + self.optimizer
+                    + " optimizer is non-invertable for the Gumbel_2P model.\n"
+                    "Confidence interval estimates of the parameters could not be obtained.\n"
+                    "You may want to try fitting the model using a different optimizer."
+                ),
+                text_color="red",
+            )
+            self.mu_SE = 0
+            self.sigma_SE = 0
+            self.Cov_mu_sigma = 0
+            self.mu_upper = self.mu
+            self.mu_lower = self.mu
+            self.sigma_upper = self.sigma
+            self.sigma_lower = self.sigma
 
         results_data = {
             "Parameter": ["Mu", "Sigma"],
@@ -5113,6 +6875,8 @@ class Fit_Gumbel_2P:
                 underline=True,
             )
             print("Analysis method:", self.method)
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
             print(
                 "Failures / Right censored:",
                 str(str(len(failures)) + "/" + str(len(right_censored))),
@@ -5145,6 +6909,7 @@ class Fit_Gumbel_2P:
                 __fitted_dist_params=self,
                 CI=CI,
                 CI_type=CI_type,
+                downsample_scatterplot=downsample_scatterplot,
                 **kwargs,
             )
             self.probability_plot = plt.gca()
@@ -5187,14 +6952,15 @@ class Fit_Lognormal_2P:
         regression on X), or 'RRY' (Rank regression on Y). LS will perform both
         RRX and RRY and return the better one. Default is 'MLE'.
     optimizer : str, optional
-        The optimisation algorithm used to find the solution. Must be either
-        'L-BFGS-B', 'TNC', or 'powell'. These are all bound constrained methods.
-        If the bounded method fails, 'nelder-mead' will be used. If
-        'nelder-mead' fails then the initial guess will be returned with a
-        warning. For more information on these optimizers see
-        https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.minimize.html#scipy.optimize.minimize
-        Default is 'L-BFGS-B' if the data is <= 97% right censored or 'TNC' if
-        the data is > 97% right censored.
+        The optimization algorithm used to find the solution. Must be either
+        'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'. Specifying the optimizer
+        will result in that optimizer being used. To use all of these specify
+        'best' and the best result will be returned. The default behaviour is to
+        try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and
+        'powell') and stop once one of the optimizers finds a solution. If the
+        optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation
+        <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
     CI : float, optional
         confidence interval for estimating confidence limits on parameters. Must
         be between 0 and 1. Default is 0.95 for 95% CI.
@@ -5215,6 +6981,13 @@ class Fit_Lognormal_2P:
         If an array or list is specified then it will be used instead of the
         default array. Any array or list specified must contain values between
         0 and 100.
+    downsample_scatterplot : bool, int, optional
+        If True or None, and there are over 1000 points, then the scatterplot
+        will be downsampled by a factor. The default downsample factor will seek
+        to produce between 500 and 1000 points. If a number is specified, it
+        will be used as the downsample factor. Default is True. This
+        functionality makes plotting faster when there are very large numbers of
+        points. It only affects the scatterplot not the calculations.
     kwargs
         Plotting keywords that are passed directly to matplotlib for the
         probability plot (e.g. color, label, linestyle).
@@ -5271,7 +7044,7 @@ class Fit_Lognormal_2P:
     If the fitting process encounters a problem a warning will be printed. This
     may be caused by the chosen distribution being a very poor fit to the data
     or the data being heavily censored. If a warning is printed, consider trying
-    a different optimiser.
+    a different optimizer.
     """
 
     def __init__(
@@ -5286,6 +7059,7 @@ class Fit_Lognormal_2P:
         CI_type="time",
         method="MLE",
         force_sigma=None,
+        downsample_scatterplot=True,
         **kwargs,
     ):
 
@@ -5315,7 +7089,7 @@ class Fit_Lognormal_2P:
             LS_method = "LS"
         else:
             LS_method = method
-        LS_results = LS_optimisation(
+        LS_results = LS_optimization(
             func_name="Lognormal_2P",
             LL_func=Fit_Lognormal_2P.LL,
             failures=failures,
@@ -5330,10 +7104,10 @@ class Fit_Lognormal_2P:
             self.mu = LS_results.guess[0]
             self.sigma = LS_results.guess[1]
             self.method = str("Least Squares Estimation (" + LS_results.method + ")")
-
+            self.optimizer = None
         # maximum likelihood method
         elif method == "MLE":
-            MLE_results = MLE_optimisation(
+            MLE_results = MLE_optimization(
                 func_name="Lognormal_2P",
                 LL_func=Fit_Lognormal_2P.LL,
                 initial_guess=[LS_results.guess[0], LS_results.guess[1]],
@@ -5346,6 +7120,7 @@ class Fit_Lognormal_2P:
             self.mu = MLE_results.scale
             self.sigma = MLE_results.shape
             self.method = "Maximum Likelihood Estimation (MLE)"
+            self.optimizer = MLE_results.optimizer
 
         # confidence interval estimates of parameters
         Z = -ss.norm.ppf((1 - CI) / 2)
@@ -5356,16 +7131,38 @@ class Fit_Lognormal_2P:
                 np.array(tuple(failures)),
                 np.array(tuple(right_censored)),
             )
-            covariance_matrix = np.linalg.inv(hessian_matrix)
-            self.mu_SE = abs(covariance_matrix[0][0]) ** 0.5
-            self.sigma_SE = abs(covariance_matrix[1][1]) ** 0.5
-            self.Cov_mu_sigma = covariance_matrix[0][1]
-            self.mu_upper = self.mu + (Z * self.mu_SE)  # mu is positive or negative
-            self.mu_lower = self.mu + (-Z * self.mu_SE)
-            self.sigma_upper = self.sigma * (
-                np.exp(Z * (self.sigma_SE / self.sigma))
-            )  # sigma is strictly positive
-            self.sigma_lower = self.sigma * (np.exp(-Z * (self.sigma_SE / self.sigma)))
+            try:
+                covariance_matrix = np.linalg.inv(hessian_matrix)
+                self.mu_SE = abs(covariance_matrix[0][0]) ** 0.5
+                self.sigma_SE = abs(covariance_matrix[1][1]) ** 0.5
+                self.Cov_mu_sigma = covariance_matrix[0][1]
+                self.mu_upper = self.mu + (Z * self.mu_SE)  # mu is positive or negative
+                self.mu_lower = self.mu + (-Z * self.mu_SE)
+                self.sigma_upper = self.sigma * (
+                    np.exp(Z * (self.sigma_SE / self.sigma))
+                )  # sigma is strictly positive
+                self.sigma_lower = self.sigma * (
+                    np.exp(-Z * (self.sigma_SE / self.sigma))
+                )
+            except LinAlgError:
+                # this exception is rare but can occur with some optimizers
+                colorprint(
+                    str(
+                        "WARNING: The hessian matrix obtained using the "
+                        + self.optimizer
+                        + " optimizer is non-invertable for the Lognormal_2P model.\n"
+                        "Confidence interval estimates of the parameters could not be obtained.\n"
+                        "You may want to try fitting the model using a different optimizer."
+                    ),
+                    text_color="red",
+                )
+                self.mu_SE = 0
+                self.sigma_SE = 0
+                self.Cov_mu_sigma = 0
+                self.mu_upper = self.mu
+                self.mu_lower = self.mu
+                self.sigma_upper = self.sigma
+                self.sigma_lower = self.sigma
         else:
             hessian_matrix = hessian(Fit_Lognormal_2P.LL_fs)(
                 np.array(tuple([self.mu])),
@@ -5373,14 +7170,34 @@ class Fit_Lognormal_2P:
                 np.array(tuple(right_censored)),
                 np.array(tuple([force_sigma])),
             )
-            covariance_matrix = np.linalg.inv(hessian_matrix)
-            self.mu_SE = abs(covariance_matrix[0][0]) ** 0.5
-            self.sigma_SE = 0
-            self.Cov_mu_sigma = 0
-            self.mu_upper = self.mu + (Z * self.mu_SE)  # mu is positive or negative
-            self.mu_lower = self.mu + (-Z * self.mu_SE)
-            self.sigma_upper = self.sigma
-            self.sigma_lower = self.sigma
+            try:
+                covariance_matrix = np.linalg.inv(hessian_matrix)
+                self.mu_SE = abs(covariance_matrix[0][0]) ** 0.5
+                self.sigma_SE = 0
+                self.Cov_mu_sigma = 0
+                self.mu_upper = self.mu + (Z * self.mu_SE)  # mu is positive or negative
+                self.mu_lower = self.mu + (-Z * self.mu_SE)
+                self.sigma_upper = self.sigma
+                self.sigma_lower = self.sigma
+            except LinAlgError:
+                # this exception is rare but can occur with some optimizers
+                colorprint(
+                    str(
+                        "WARNING: The hessian matrix obtained using the "
+                        + self.optimizer
+                        + " optimizer is non-invertable for the Lognormal_2P model.\n"
+                        "Confidence interval estimates of the parameters could not be obtained.\n"
+                        "You may want to try fitting the model using a different optimizer."
+                    ),
+                    text_color="red",
+                )
+                self.mu_SE = 0
+                self.sigma_SE = 0
+                self.Cov_mu_sigma = 0
+                self.mu_upper = self.mu
+                self.mu_lower = self.mu
+                self.sigma_upper = self.sigma
+                self.sigma_lower = self.sigma
 
         results_data = {
             "Parameter": ["Mu", "Sigma"],
@@ -5480,6 +7297,8 @@ class Fit_Lognormal_2P:
                 underline=True,
             )
             print("Analysis method:", self.method)
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
             print(
                 "Failures / Right censored:",
                 str(str(len(failures)) + "/" + str(len(right_censored))),
@@ -5512,6 +7331,7 @@ class Fit_Lognormal_2P:
                 __fitted_dist_params=self,
                 CI=CI,
                 CI_type=CI_type,
+                downsample_scatterplot=downsample_scatterplot,
                 **kwargs,
             )
             self.probability_plot = plt.gca()
@@ -5563,14 +7383,15 @@ class Fit_Lognormal_3P:
         likelihood estimation), or 'LS' (least squares estimation).
         Default is 'MLE'.
     optimizer : str, optional
-        The optimisation algorithm used to find the solution. Must be either
-        'L-BFGS-B', 'TNC', or 'powell'. These are all bound constrained methods.
-        If the bounded method fails, 'nelder-mead' will be used. If
-        'nelder-mead' fails then the initial guess will be returned with a
-        warning. For more information on these optimizers see
-        https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.minimize.html#scipy.optimize.minimize
-        Default is 'L-BFGS-B' if the data is <= 97% right censored or 'TNC' if
-        the data is > 97% right censored.
+        The optimization algorithm used to find the solution. Must be either
+        'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'. Specifying the optimizer
+        will result in that optimizer being used. To use all of these specify
+        'best' and the best result will be returned. The default behaviour is to
+        try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and
+        'powell') and stop once one of the optimizers finds a solution. If the
+        optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation
+        <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
     CI : float, optional
         confidence interval for estimating confidence limits on parameters. Must
         be between 0 and 1. Default is 0.95 for 95% CI.
@@ -5587,6 +7408,13 @@ class Fit_Lognormal_3P:
         If an array or list is specified then it will be used instead of the
         default array. Any array or list specified must contain values between
         0 and 100.
+    downsample_scatterplot : bool, int, optional
+        If True or None, and there are over 1000 points, then the scatterplot
+        will be downsampled by a factor. The default downsample factor will seek
+        to produce between 500 and 1000 points. If a number is specified, it
+        will be used as the downsample factor. Default is True. This
+        functionality makes plotting faster when there are very large numbers of
+        points. It only affects the scatterplot not the calculations.
     kwargs
         Plotting keywords that are passed directly to matplotlib for the
         probability plot (e.g. color, label, linestyle).
@@ -5651,7 +7479,7 @@ class Fit_Lognormal_3P:
     If the fitting process encounters a problem a warning will be printed. This
     may be caused by the chosen distribution being a very poor fit to the data
     or the data being heavily censored. If a warning is printed, consider trying
-    a different optimiser.
+    a different optimizer.
 
     If the fitted gamma parameter is less than 0.01, the Lognormal_3P results
     will be discarded and the Lognormal_2P distribution will be fitted. The
@@ -5669,6 +7497,7 @@ class Fit_Lognormal_3P:
         CI_type="time",
         optimizer=None,
         method="MLE",
+        downsample_scatterplot=True,
         **kwargs,
     ):
 
@@ -5695,7 +7524,7 @@ class Fit_Lognormal_3P:
             LS_method = "LS"
         else:
             LS_method = method
-        LS_results = LS_optimisation(
+        LS_results = LS_optimization(
             func_name="Lognormal_3P",
             LL_func=Fit_Lognormal_3P.LL,
             failures=failures,
@@ -5709,10 +7538,10 @@ class Fit_Lognormal_3P:
             self.sigma = LS_results.guess[1]
             self.gamma = LS_results.guess[2]
             self.method = str("Least Squares Estimation (" + LS_results.method + ")")
-
+            self.optimizer = None
         # maximum likelihood method
         elif method == "MLE":
-            MLE_results = MLE_optimisation(
+            MLE_results = MLE_optimization(
                 func_name="Lognormal_3P",
                 LL_func=Fit_Lognormal_3P.LL,
                 initial_guess=[
@@ -5728,6 +7557,7 @@ class Fit_Lognormal_3P:
             self.sigma = MLE_results.shape
             self.gamma = MLE_results.gamma
             self.method = "Maximum Likelihood Estimation (MLE)"
+            self.optimizer = MLE_results.optimizer
 
         if (
             self.gamma < 0.01
@@ -5765,30 +7595,57 @@ class Fit_Lognormal_3P:
                 np.array(tuple(failures - self.gamma)),
                 np.array(tuple(right_censored - self.gamma)),
             )
-            covariance_matrix = np.linalg.inv(hessian_matrix)
-            # this is to get the gamma_SE. Unfortunately this approach for mu_SE and sigma_SE give SE values that are very large resulting in incorrect CI plots. This is the same method used by Reliasoft
-            hessian_matrix_for_gamma = hessian(Fit_Lognormal_3P.LL)(
-                np.array(tuple(params_3P)),
-                np.array(tuple(failures)),
-                np.array(tuple(right_censored)),
-            )
-            covariance_matrix_for_gamma = np.linalg.inv(hessian_matrix_for_gamma)
-            self.mu_SE = abs(covariance_matrix[0][0]) ** 0.5
-            self.sigma_SE = abs(covariance_matrix[1][1]) ** 0.5
-            self.gamma_SE = abs(covariance_matrix_for_gamma[2][2]) ** 0.5
-            self.Cov_mu_sigma = covariance_matrix[0][1]
-            self.mu_upper = self.mu + (
-                Z * self.mu_SE
-            )  # Mu can be positive or negative.
-            self.mu_lower = self.mu + (-Z * self.mu_SE)
-            self.sigma_upper = self.sigma * (
-                np.exp(Z * (self.sigma_SE / self.sigma))
-            )  # sigma is strictly positive
-            self.sigma_lower = self.sigma * (np.exp(-Z * (self.sigma_SE / self.sigma)))
-            self.gamma_upper = self.gamma * (
-                np.exp(Z * (self.gamma_SE / self.gamma))
-            )  # here we assume gamma can only be positive as there are bounds placed on it in the optimizer. Minitab assumes positive or negative so bounds are different
-            self.gamma_lower = self.gamma * (np.exp(-Z * (self.gamma_SE / self.gamma)))
+            try:
+                covariance_matrix = np.linalg.inv(hessian_matrix)
+                # this is to get the gamma_SE. Unfortunately this approach for mu_SE and sigma_SE give SE values that are very large resulting in incorrect CI plots. This is the same method used by Reliasoft
+                hessian_matrix_for_gamma = hessian(Fit_Lognormal_3P.LL)(
+                    np.array(tuple(params_3P)),
+                    np.array(tuple(failures)),
+                    np.array(tuple(right_censored)),
+                )
+                covariance_matrix_for_gamma = np.linalg.inv(hessian_matrix_for_gamma)
+                self.mu_SE = abs(covariance_matrix[0][0]) ** 0.5
+                self.sigma_SE = abs(covariance_matrix[1][1]) ** 0.5
+                self.gamma_SE = abs(covariance_matrix_for_gamma[2][2]) ** 0.5
+                self.Cov_mu_sigma = covariance_matrix[0][1]
+                self.mu_upper = self.mu + (
+                    Z * self.mu_SE
+                )  # Mu can be positive or negative.
+                self.mu_lower = self.mu + (-Z * self.mu_SE)
+                self.sigma_upper = self.sigma * (
+                    np.exp(Z * (self.sigma_SE / self.sigma))
+                )  # sigma is strictly positive
+                self.sigma_lower = self.sigma * (
+                    np.exp(-Z * (self.sigma_SE / self.sigma))
+                )
+                self.gamma_upper = self.gamma * (
+                    np.exp(Z * (self.gamma_SE / self.gamma))
+                )  # here we assume gamma can only be positive as there are bounds placed on it in the optimizer. Minitab assumes positive or negative so bounds are different
+                self.gamma_lower = self.gamma * (
+                    np.exp(-Z * (self.gamma_SE / self.gamma))
+                )
+            except LinAlgError:
+                # this exception is rare but can occur with some optimizers
+                colorprint(
+                    str(
+                        "WARNING: The hessian matrix obtained using the "
+                        + self.optimizer
+                        + " optimizer is non-invertable for the Lognormal_3P model.\n"
+                        "Confidence interval estimates of the parameters could not be obtained.\n"
+                        "You may want to try fitting the model using a different optimizer."
+                    ),
+                    text_color="red",
+                )
+                self.mu_SE = 0
+                self.sigma_SE = 0
+                self.gamma_SE = 0
+                self.Cov_mu_sigma = 0
+                self.mu_upper = self.mu
+                self.mu_lower = self.mu
+                self.sigma_upper = self.sigma
+                self.sigma_lower = self.sigma
+                self.gamma_upper = self.gamma
+                self.gamma_lower = self.gamma
 
         results_data = {
             "Parameter": ["Mu", "Sigma", "Gamma"],
@@ -5883,6 +7740,8 @@ class Fit_Lognormal_3P:
                 underline=True,
             )
             print("Analysis method:", self.method)
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
             print(
                 "Failures / Right censored:",
                 str(str(len(failures)) + "/" + str(len(right_censored))),
@@ -5915,6 +7774,7 @@ class Fit_Lognormal_3P:
                 __fitted_dist_params=self,
                 CI=CI,
                 CI_type=CI_type,
+                downsample_scatterplot=downsample_scatterplot,
                 **kwargs,
             )
             if self.gamma < 0.01:
@@ -5972,14 +7832,15 @@ class Fit_Gamma_2P:
         regression on X), or 'RRY' (Rank regression on Y). LS will perform both
         RRX and RRY and return the better one. Default is 'MLE'.
     optimizer : str, optional
-        The optimisation algorithm used to find the solution. Must be either
-        'L-BFGS-B', 'TNC', or 'powell'. These are all bound constrained methods.
-        If the bounded method fails, 'nelder-mead' will be used. If
-        'nelder-mead' fails then the initial guess will be returned with a
-        warning. For more information on these optimizers see
-        https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.minimize.html#scipy.optimize.minimize
-        Default is 'L-BFGS-B' if the data is <= 97% right censored or 'TNC' if
-        the data is > 97% right censored.
+        The optimization algorithm used to find the solution. Must be either
+        'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'. Specifying the optimizer
+        will result in that optimizer being used. To use all of these specify
+        'best' and the best result will be returned. The default behaviour is to
+        try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and
+        'powell') and stop once one of the optimizers finds a solution. If the
+        optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation
+        <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
     CI : float, optional
         confidence interval for estimating confidence limits on parameters. Must
         be between 0 and 1. Default is 0.95 for 95% CI.
@@ -5996,6 +7857,13 @@ class Fit_Gamma_2P:
         If an array or list is specified then it will be used instead of the
         default array. Any array or list specified must contain values between
         0 and 100.
+    downsample_scatterplot : bool, int, optional
+        If True or None, and there are over 1000 points, then the scatterplot
+        will be downsampled by a factor. The default downsample factor will seek
+        to produce between 500 and 1000 points. If a number is specified, it
+        will be used as the downsample factor. Default is True. This
+        functionality makes plotting faster when there are very large numbers of
+        points. It only affects the scatterplot not the calculations.
     kwargs
         Plotting keywords that are passed directly to matplotlib for the
         probability plot (e.g. color, label, linestyle)
@@ -6063,7 +7931,7 @@ class Fit_Gamma_2P:
     If the fitting process encounters a problem a warning will be printed. This
     may be caused by the chosen distribution being a very poor fit to the data
     or the data being heavily censored. If a warning is printed, consider trying
-    a different optimiser.
+    a different optimizer.
 
     This is a two parameter distribution but it has two parametrisations. These
     are alpha,beta and mu,beta. The alpha,beta parametrisation is reported in
@@ -6088,6 +7956,7 @@ class Fit_Gamma_2P:
         optimizer=None,
         percentiles=None,
         CI_type="time",
+        downsample_scatterplot=True,
         **kwargs,
     ):
 
@@ -6111,7 +7980,7 @@ class Fit_Gamma_2P:
         self.gamma = 0
 
         # Obtain least squares estimates
-        LS_results = LS_optimisation(
+        LS_results = LS_optimization(
             func_name="Gamma_2P",
             LL_func=Fit_Gamma_2P.LL_ab,
             failures=failures,
@@ -6125,10 +7994,10 @@ class Fit_Gamma_2P:
             self.mu = np.log(self.alpha)
             self.beta = LS_results.guess[1]
             self.method = str("Least Squares Estimation (" + LS_results.method + ")")
-
+            self.optimizer = None
         # maximum likelihood method
         elif method == "MLE":
-            MLE_results_ab = MLE_optimisation(
+            MLE_results_ab = MLE_optimization(
                 func_name="Gamma_2P",
                 LL_func=Fit_Gamma_2P.LL_ab,
                 initial_guess=[LS_results.guess[0], LS_results.guess[1]],
@@ -6140,6 +8009,7 @@ class Fit_Gamma_2P:
             self.mu = np.log(MLE_results_ab.scale)
             self.beta = MLE_results_ab.shape
             self.method = "Maximum Likelihood Estimation (MLE)"
+            self.optimizer = MLE_results_ab.optimizer
 
         # confidence interval estimates of parameters
         # this needs to be done in terms of alpha beta (ab) parametrisation
@@ -6151,26 +8021,50 @@ class Fit_Gamma_2P:
             np.array(tuple(failures)),
             np.array(tuple(right_censored)),
         )
-        covariance_matrix_ab = np.linalg.inv(hessian_matrix_ab)
-        self.alpha_SE = abs(covariance_matrix_ab[0][0]) ** 0.5
-        self.beta_SE = abs(covariance_matrix_ab[1][1]) ** 0.5
-        self.Cov_alpha_beta = covariance_matrix_ab[0][1]
-        self.alpha_upper = self.alpha * (np.exp(Z * (self.alpha_SE / self.alpha)))
-        self.alpha_lower = self.alpha * (np.exp(-Z * (self.alpha_SE / self.alpha)))
-        self.beta_upper = self.beta * (np.exp(Z * (self.beta_SE / self.beta)))
-        self.beta_lower = self.beta * (np.exp(-Z * (self.beta_SE / self.beta)))
+        try:
+            covariance_matrix_ab = np.linalg.inv(hessian_matrix_ab)
+            self.alpha_SE = abs(covariance_matrix_ab[0][0]) ** 0.5
+            self.beta_SE = abs(covariance_matrix_ab[1][1]) ** 0.5
+            self.Cov_alpha_beta = covariance_matrix_ab[0][1]
+            self.alpha_upper = self.alpha * (np.exp(Z * (self.alpha_SE / self.alpha)))
+            self.alpha_lower = self.alpha * (np.exp(-Z * (self.alpha_SE / self.alpha)))
+            self.beta_upper = self.beta * (np.exp(Z * (self.beta_SE / self.beta)))
+            self.beta_lower = self.beta * (np.exp(-Z * (self.beta_SE / self.beta)))
 
-        params_mb = [self.mu, self.beta]
-        hessian_matrix_mb = hessian(Fit_Gamma_2P.LL_mb)(
-            np.array(tuple(params_mb)),
-            np.array(tuple(failures)),
-            np.array(tuple(right_censored)),
-        )
-        covariance_matrix_mb = np.linalg.inv(hessian_matrix_mb)
-        self.mu_SE = abs(covariance_matrix_mb[0][0]) ** 0.5
-        self.Cov_mu_beta = covariance_matrix_mb[0][1]
-        self.mu_upper = self.mu * (np.exp(Z * (self.mu_SE / self.mu)))
-        self.mu_lower = self.mu * (np.exp(-Z * (self.mu_SE / self.mu)))
+            params_mb = [self.mu, self.beta]
+            hessian_matrix_mb = hessian(Fit_Gamma_2P.LL_mb)(
+                np.array(tuple(params_mb)),
+                np.array(tuple(failures)),
+                np.array(tuple(right_censored)),
+            )
+            covariance_matrix_mb = np.linalg.inv(hessian_matrix_mb)
+            self.mu_SE = abs(covariance_matrix_mb[0][0]) ** 0.5
+            self.Cov_mu_beta = covariance_matrix_mb[0][1]
+            self.mu_upper = self.mu * (np.exp(Z * (self.mu_SE / self.mu)))
+            self.mu_lower = self.mu * (np.exp(-Z * (self.mu_SE / self.mu)))
+        except LinAlgError:
+            # this exception is rare but can occur with some optimizers
+            colorprint(
+                str(
+                    "WARNING: The hessian matrix obtained using the "
+                    + self.optimizer
+                    + " optimizer is non-invertable for the Gamma_2P model.\n"
+                    "Confidence interval estimates of the parameters could not be obtained.\n"
+                    "You may want to try fitting the model using a different optimizer."
+                ),
+                text_color="red",
+            )
+            self.alpha_SE = 0
+            self.beta_SE = 0
+            self.mu_SE = 0
+            self.Cov_alpha_beta = 0
+            self.Cov_mu_beta = 0
+            self.alpha_upper = self.alpha
+            self.alpha_lower = self.alpha
+            self.beta_upper = self.beta
+            self.beta_lower = self.beta
+            self.mu_upper = self.mu
+            self.mu_lower = self.mu
 
         results_data = {
             "Parameter": ["Alpha", "Beta"],
@@ -6264,6 +8158,8 @@ class Fit_Gamma_2P:
                 underline=True,
             )
             print("Analysis method:", self.method)
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
             print(
                 "Failures / Right censored:",
                 str(str(len(failures)) + "/" + str(len(right_censored))),
@@ -6296,6 +8192,7 @@ class Fit_Gamma_2P:
                 __fitted_dist_params=self,
                 CI_type=CI_type,
                 CI=CI,
+                downsample_scatterplot=downsample_scatterplot,
                 **kwargs,
             )
             self.probability_plot = plt.gca()
@@ -6356,14 +8253,15 @@ class Fit_Gamma_3P:
         likelihood estimation), or 'LS' (least squares estimation).
         Default is 'MLE'.
     optimizer : str, optional
-        The optimisation algorithm used to find the solution. Must be either
-        'L-BFGS-B', 'TNC', or 'powell'. These are all bound constrained methods.
-        If the bounded method fails, 'nelder-mead' will be used. If
-        'nelder-mead' fails then the initial guess will be returned with a
-        warning. For more information on these optimizers see
-        https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.minimize.html#scipy.optimize.minimize
-        Default is 'L-BFGS-B' if the data is <= 97% right censored or 'TNC' if
-        the data is > 97% right censored.
+        The optimization algorithm used to find the solution. Must be either
+        'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'. Specifying the optimizer
+        will result in that optimizer being used. To use all of these specify
+        'best' and the best result will be returned. The default behaviour is to
+        try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and
+        'powell') and stop once one of the optimizers finds a solution. If the
+        optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation
+        <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
     CI : float, optional
         confidence interval for estimating confidence limits on parameters. Must
         be between 0 and 1. Default is 0.95 for 95% CI.
@@ -6380,6 +8278,13 @@ class Fit_Gamma_3P:
         If an array or list is specified then it will be used instead of the
         default array. Any array or list specified must contain values between
         0 and 100.
+    downsample_scatterplot : bool, int, optional
+        If True or None, and there are over 1000 points, then the scatterplot
+        will be downsampled by a factor. The default downsample factor will seek
+        to produce between 500 and 1000 points. If a number is specified, it
+        will be used as the downsample factor. Default is True. This
+        functionality makes plotting faster when there are very large numbers of
+        points. It only affects the scatterplot not the calculations.
     kwargs
         Plotting keywords that are passed directly to matplotlib for the
         probability plot (e.g. color, label, linestyle)
@@ -6455,7 +8360,7 @@ class Fit_Gamma_3P:
     If the fitting process encounters a problem a warning will be printed. This
     may be caused by the chosen distribution being a very poor fit to the data
     or the data being heavily censored. If a warning is printed, consider trying
-    a different optimiser.
+    a different optimizer.
 
     If the fitted gamma parameter is less than 0.01, the Gamma_3P results will
     be discarded and the Gamma_2P distribution will be fitted. The returned
@@ -6485,6 +8390,7 @@ class Fit_Gamma_3P:
         method="MLE",
         percentiles=None,
         CI_type="time",
+        downsample_scatterplot=True,
         **kwargs,
     ):
 
@@ -6511,7 +8417,7 @@ class Fit_Gamma_3P:
             LS_method = "LS"
         else:
             LS_method = method
-        LS_results = LS_optimisation(
+        LS_results = LS_optimization(
             func_name="Gamma_3P",
             LL_func=Fit_Gamma_3P.LL_abg,
             failures=failures,
@@ -6526,10 +8432,10 @@ class Fit_Gamma_3P:
             self.beta = LS_results.guess[1]
             self.gamma = LS_results.guess[2]
             self.method = str("Least Squares Estimation (" + LS_results.method + ")")
-
+            self.optimizer = None
         # maximum likelihood method
         elif method == "MLE":
-            MLE_results_abg = MLE_optimisation(
+            MLE_results_abg = MLE_optimization(
                 func_name="Gamma_3P",
                 LL_func=Fit_Gamma_3P.LL_abg,
                 initial_guess=[
@@ -6546,6 +8452,7 @@ class Fit_Gamma_3P:
             self.beta = MLE_results_abg.shape
             self.gamma = MLE_results_abg.gamma
             self.method = "Maximum Likelihood Estimation (MLE)"
+            self.optimizer = MLE_results_abg.optimizer
 
         if (
             self.gamma < 0.01
@@ -6588,36 +8495,71 @@ class Fit_Gamma_3P:
                 np.array(tuple(failures - self.gamma)),
                 np.array(tuple(right_censored - self.gamma)),
             )
-            covariance_matrix_ab = np.linalg.inv(hessian_matrix_ab)
-            hessian_matrix_mb = hessian(Fit_Gamma_2P.LL_mb)(
-                np.array(tuple(params_2P_mb)),
-                np.array(tuple(failures - self.gamma)),
-                np.array(tuple(right_censored - self.gamma)),
-            )
-            covariance_matrix_mb = np.linalg.inv(hessian_matrix_mb)
+            try:
+                covariance_matrix_ab = np.linalg.inv(hessian_matrix_ab)
+                hessian_matrix_mb = hessian(Fit_Gamma_2P.LL_mb)(
+                    np.array(tuple(params_2P_mb)),
+                    np.array(tuple(failures - self.gamma)),
+                    np.array(tuple(right_censored - self.gamma)),
+                )
+                covariance_matrix_mb = np.linalg.inv(hessian_matrix_mb)
 
-            # this is to get the gamma_SE. Unfortunately this approach for alpha_SE and beta_SE give SE values that are very large resulting in incorrect CI plots. This is the same method used by Reliasoft
-            hessian_matrix_for_gamma = hessian(Fit_Gamma_3P.LL_abg)(
-                np.array(tuple(params_3P_abg)),
-                np.array(tuple(failures)),
-                np.array(tuple(right_censored)),
-            )
-            covariance_matrix_for_gamma = np.linalg.inv(hessian_matrix_for_gamma)
+                # this is to get the gamma_SE. Unfortunately this approach for alpha_SE and beta_SE give SE values that are very large resulting in incorrect CI plots. This is the same method used by Reliasoft
+                hessian_matrix_for_gamma = hessian(Fit_Gamma_3P.LL_abg)(
+                    np.array(tuple(params_3P_abg)),
+                    np.array(tuple(failures)),
+                    np.array(tuple(right_censored)),
+                )
+                covariance_matrix_for_gamma = np.linalg.inv(hessian_matrix_for_gamma)
 
-            self.alpha_SE = abs(covariance_matrix_ab[0][0]) ** 0.5
-            self.beta_SE = abs(covariance_matrix_ab[1][1]) ** 0.5
-            self.mu_SE = abs(covariance_matrix_mb[0][0]) ** 0.5
-            self.gamma_SE = abs(covariance_matrix_for_gamma[2][2]) ** 0.5
-            self.Cov_alpha_beta = covariance_matrix_ab[0][1]
-            self.Cov_mu_beta = covariance_matrix_mb[0][1]
-            self.alpha_upper = self.alpha * (np.exp(Z * (self.alpha_SE / self.alpha)))
-            self.alpha_lower = self.alpha * (np.exp(-Z * (self.alpha_SE / self.alpha)))
-            self.mu_upper = self.mu * (np.exp(Z * (self.mu_SE / self.mu)))
-            self.mu_lower = self.mu * (np.exp(-Z * (self.mu_SE / self.mu)))
-            self.beta_upper = self.beta * (np.exp(Z * (self.beta_SE / self.beta)))
-            self.beta_lower = self.beta * (np.exp(-Z * (self.beta_SE / self.beta)))
-            self.gamma_upper = self.gamma * (np.exp(Z * (self.gamma_SE / self.gamma)))
-            self.gamma_lower = self.gamma * (np.exp(-Z * (self.gamma_SE / self.gamma)))
+                self.alpha_SE = abs(covariance_matrix_ab[0][0]) ** 0.5
+                self.beta_SE = abs(covariance_matrix_ab[1][1]) ** 0.5
+                self.mu_SE = abs(covariance_matrix_mb[0][0]) ** 0.5
+                self.gamma_SE = abs(covariance_matrix_for_gamma[2][2]) ** 0.5
+                self.Cov_alpha_beta = covariance_matrix_ab[0][1]
+                self.Cov_mu_beta = covariance_matrix_mb[0][1]
+                self.alpha_upper = self.alpha * (
+                    np.exp(Z * (self.alpha_SE / self.alpha))
+                )
+                self.alpha_lower = self.alpha * (
+                    np.exp(-Z * (self.alpha_SE / self.alpha))
+                )
+                self.mu_upper = self.mu * (np.exp(Z * (self.mu_SE / self.mu)))
+                self.mu_lower = self.mu * (np.exp(-Z * (self.mu_SE / self.mu)))
+                self.beta_upper = self.beta * (np.exp(Z * (self.beta_SE / self.beta)))
+                self.beta_lower = self.beta * (np.exp(-Z * (self.beta_SE / self.beta)))
+                self.gamma_upper = self.gamma * (
+                    np.exp(Z * (self.gamma_SE / self.gamma))
+                )
+                self.gamma_lower = self.gamma * (
+                    np.exp(-Z * (self.gamma_SE / self.gamma))
+                )
+            except LinAlgError:
+                # this exception is rare but can occur with some optimizers
+                colorprint(
+                    str(
+                        "WARNING: The hessian matrix obtained using the "
+                        + self.optimizer
+                        + " optimizer is non-invertable for the Gamma_3P model.\n"
+                        "Confidence interval estimates of the parameters could not be obtained.\n"
+                        "You may want to try fitting the model using a different optimizer."
+                    ),
+                    text_color="red",
+                )
+                self.alpha_SE = 0
+                self.beta_SE = 0
+                self.mu_SE = 0
+                self.gamma_SE = 0
+                self.Cov_alpha_beta = 0
+                self.Cov_mu_beta = 0
+                self.alpha_upper = self.alpha
+                self.alpha_lower = self.alpha
+                self.mu_upper = self.mu
+                self.mu_lower = self.mu
+                self.beta_upper = self.beta
+                self.beta_lower = self.beta
+                self.gamma_upper = self.gamma
+                self.gamma_lower = self.gamma
 
         results_data = {
             "Parameter": ["Alpha", "Beta", "Gamma"],
@@ -6712,6 +8654,8 @@ class Fit_Gamma_3P:
                 underline=True,
             )
             print("Analysis method:", self.method)
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
             print(
                 "Failures / Right censored:",
                 str(str(len(failures)) + "/" + str(len(right_censored))),
@@ -6744,6 +8688,7 @@ class Fit_Gamma_3P:
                 __fitted_dist_params=self,
                 CI=CI,
                 CI_type=CI_type,
+                downsample_scatterplot=downsample_scatterplot,
                 **kwargs,
             )
             if self.gamma < 0.01:
@@ -6820,14 +8765,15 @@ class Fit_Beta_2P:
         regression on X), or 'RRY' (Rank regression on Y). LS will perform both
         RRX and RRY and return the better one. Default is 'MLE'.
     optimizer : str, optional
-        The optimisation algorithm used to find the solution. Must be either
-        'L-BFGS-B', 'TNC', or 'powell'. These are all bound constrained methods.
-        If the bounded method fails, 'nelder-mead' will be used. If
-        'nelder-mead' fails then the initial guess will be returned with a
-        warning. For more information on these optimizers see
-        https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.minimize.html#scipy.optimize.minimize
-        Default is 'L-BFGS-B' if the data is <= 97% right censored or 'TNC' if
-        the data is > 97% right censored.
+        The optimization algorithm used to find the solution. Must be either
+        'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'. Specifying the optimizer
+        will result in that optimizer being used. To use all of these specify
+        'best' and the best result will be returned. The default behaviour is to
+        try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and
+        'powell') and stop once one of the optimizers finds a solution. If the
+        optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation
+        <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
     CI : float, optional
         confidence interval for estimating confidence limits on parameters. Must
         be between 0 and 1. Default is 0.95 for 95% CI.
@@ -6839,6 +8785,13 @@ class Fit_Beta_2P:
         If an array or list is specified then it will be used instead of the
         default array. Any array or list specified must contain values between
         0 and 100.
+    downsample_scatterplot : bool, int, optional
+        If True or None, and there are over 1000 points, then the scatterplot
+        will be downsampled by a factor. The default downsample factor will seek
+        to produce between 500 and 1000 points. If a number is specified, it
+        will be used as the downsample factor. Default is True. This
+        functionality makes plotting faster when there are very large numbers of
+        points. It only affects the scatterplot not the calculations.
     kwargs
         Plotting keywords that are passed directly to matplotlib for the
         probability plot (e.g. color, label, linestyle)
@@ -6895,7 +8848,7 @@ class Fit_Beta_2P:
     If the fitting process encounters a problem a warning will be printed. This
     may be caused by the chosen distribution being a very poor fit to the data
     or the data being heavily censored. If a warning is printed, consider trying
-    a different optimiser.
+    a different optimizer.
 
     Confidence intervals on the plots are not provided.
     """
@@ -6910,6 +8863,7 @@ class Fit_Beta_2P:
         percentiles=None,
         method="MLE",
         optimizer=None,
+        downsample_scatterplot=True,
         **kwargs,
     ):
 
@@ -6934,7 +8888,7 @@ class Fit_Beta_2P:
             LS_method = "LS"
         else:
             LS_method = method
-        LS_results = LS_optimisation(
+        LS_results = LS_optimization(
             func_name="Beta_2P",
             LL_func=Fit_Beta_2P.LL,
             failures=failures,
@@ -6947,10 +8901,10 @@ class Fit_Beta_2P:
             self.alpha = LS_results.guess[0]
             self.beta = LS_results.guess[1]
             self.method = str("Least Squares Estimation (" + LS_results.method + ")")
-
+            self.optimizer = None
         # maximum likelihood method
         elif method == "MLE":
-            MLE_results = MLE_optimisation(
+            MLE_results = MLE_optimization(
                 func_name="Beta_2P",
                 LL_func=Fit_Beta_2P.LL,
                 initial_guess=[LS_results.guess[0], LS_results.guess[1]],
@@ -6961,6 +8915,7 @@ class Fit_Beta_2P:
             self.alpha = MLE_results.scale
             self.beta = MLE_results.shape
             self.method = "Maximum Likelihood Estimation (MLE)"
+            self.optimizer = MLE_results.optimizer
 
         # confidence interval estimates of parameters
         Z = -ss.norm.ppf((1 - CI) / 2)
@@ -6970,14 +8925,34 @@ class Fit_Beta_2P:
             np.array(tuple(failures)),
             np.array(tuple(right_censored)),
         )
-        covariance_matrix = np.linalg.inv(hessian_matrix)
-        self.alpha_SE = abs(covariance_matrix[0][0]) ** 0.5
-        self.beta_SE = abs(covariance_matrix[1][1]) ** 0.5
-        self.Cov_alpha_beta = covariance_matrix[0][1]
-        self.alpha_upper = self.alpha * (np.exp(Z * (self.alpha_SE / self.alpha)))
-        self.alpha_lower = self.alpha * (np.exp(-Z * (self.alpha_SE / self.alpha)))
-        self.beta_upper = self.beta * (np.exp(Z * (self.beta_SE / self.beta)))
-        self.beta_lower = self.beta * (np.exp(-Z * (self.beta_SE / self.beta)))
+        try:
+            covariance_matrix = np.linalg.inv(hessian_matrix)
+            self.alpha_SE = abs(covariance_matrix[0][0]) ** 0.5
+            self.beta_SE = abs(covariance_matrix[1][1]) ** 0.5
+            self.Cov_alpha_beta = covariance_matrix[0][1]
+            self.alpha_upper = self.alpha * (np.exp(Z * (self.alpha_SE / self.alpha)))
+            self.alpha_lower = self.alpha * (np.exp(-Z * (self.alpha_SE / self.alpha)))
+            self.beta_upper = self.beta * (np.exp(Z * (self.beta_SE / self.beta)))
+            self.beta_lower = self.beta * (np.exp(-Z * (self.beta_SE / self.beta)))
+        except LinAlgError:
+            # this exception is rare but can occur with some optimizers
+            colorprint(
+                str(
+                    "WARNING: The hessian matrix obtained using the "
+                    + self.optimizer
+                    + " optimizer is non-invertable for the Beta_2P model.\n"
+                    "Confidence interval estimates of the parameters could not be obtained.\n"
+                    "You may want to try fitting the model using a different optimizer."
+                ),
+                text_color="red",
+            )
+            self.alpha_SE = 0
+            self.beta_SE = 0
+            self.Cov_alpha_beta = 0
+            self.alpha_upper = self.alpha
+            self.alpha_lower = self.alpha
+            self.beta_upper = self.beta
+            self.beta_lower = self.beta
 
         results_data = {
             "Parameter": ["Alpha", "Beta"],
@@ -7052,6 +9027,8 @@ class Fit_Beta_2P:
                 underline=True,
             )
             print("Analysis method:", self.method)
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
             print(
                 "Failures / Right censored:",
                 str(str(len(failures)) + "/" + str(len(right_censored))),
@@ -7082,6 +9059,7 @@ class Fit_Beta_2P:
                 failures=failures,
                 right_censored=rc,
                 __fitted_dist_params=self,
+                downsample_scatterplot=downsample_scatterplot,
                 **kwargs,
             )
             self.probability_plot = plt.gca()
@@ -7124,14 +9102,15 @@ class Fit_Loglogistic_2P:
         regression on X), or 'RRY' (Rank regression on Y). LS will perform both
         RRX and RRY and return the better one. Default is 'MLE'.
     optimizer : str, optional
-        The optimisation algorithm used to find the solution. Must be either
-        'L-BFGS-B', 'TNC', or 'powell'. These are all bound constrained methods.
-        If the bounded method fails, 'nelder-mead' will be used. If
-        'nelder-mead' fails then the initial guess will be returned with a
-        warning. For more information on these optimizers see
-        https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.minimize.html#scipy.optimize.minimize
-        Default is 'L-BFGS-B' if the data is <= 97% right censored or 'TNC' if
-        the data is > 97% right censored.
+        The optimization algorithm used to find the solution. Must be either
+        'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'. Specifying the optimizer
+        will result in that optimizer being used. To use all of these specify
+        'best' and the best result will be returned. The default behaviour is to
+        try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and
+        'powell') and stop once one of the optimizers finds a solution. If the
+        optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation
+        <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
     CI : float, optional
         confidence interval for estimating confidence limits on parameters. Must
         be between 0 and 1. Default is 0.95 for 95% CI.
@@ -7148,6 +9127,13 @@ class Fit_Loglogistic_2P:
         If an array or list is specified then it will be used instead of the
         default array. Any array or list specified must contain values between
         0 and 100.
+    downsample_scatterplot : bool, int, optional
+        If True or None, and there are over 1000 points, then the scatterplot
+        will be downsampled by a factor. The default downsample factor will seek
+        to produce between 500 and 1000 points. If a number is specified, it
+        will be used as the downsample factor. Default is True. This
+        functionality makes plotting faster when there are very large numbers of
+        points. It only affects the scatterplot not the calculations.
     kwargs
         Plotting keywords that are passed directly to matplotlib for the
         probability plot (e.g. color, label, linestyle)
@@ -7204,7 +9190,7 @@ class Fit_Loglogistic_2P:
     If the fitting process encounters a problem a warning will be printed. This
     may be caused by the chosen distribution being a very poor fit to the data
     or the data being heavily censored. If a warning is printed, consider trying
-    a different optimiser.
+    a different optimizer.
     """
 
     def __init__(
@@ -7218,6 +9204,7 @@ class Fit_Loglogistic_2P:
         CI_type="time",
         method="MLE",
         optimizer=None,
+        downsample_scatterplot=True,
         **kwargs,
     ):
 
@@ -7245,7 +9232,7 @@ class Fit_Loglogistic_2P:
             LS_method = "LS"
         else:
             LS_method = method
-        LS_results = LS_optimisation(
+        LS_results = LS_optimization(
             func_name="Loglogistic_2P",
             LL_func=Fit_Loglogistic_2P.LL,
             failures=failures,
@@ -7258,10 +9245,10 @@ class Fit_Loglogistic_2P:
             self.alpha = LS_results.guess[0]
             self.beta = LS_results.guess[1]
             self.method = str("Least Squares Estimation (" + LS_results.method + ")")
-
+            self.optimizer = None
         # maximum likelihood method
         elif method == "MLE":
-            MLE_results = MLE_optimisation(
+            MLE_results = MLE_optimization(
                 func_name="Loglogistic_2P",
                 LL_func=Fit_Loglogistic_2P.LL,
                 initial_guess=[LS_results.guess[0], LS_results.guess[1]],
@@ -7272,6 +9259,7 @@ class Fit_Loglogistic_2P:
             self.alpha = MLE_results.scale
             self.beta = MLE_results.shape
             self.method = "Maximum Likelihood Estimation (MLE)"
+            self.optimizer = MLE_results.optimizer
 
         # confidence interval estimates of parameters
         Z = -ss.norm.ppf((1 - CI) / 2)
@@ -7281,14 +9269,34 @@ class Fit_Loglogistic_2P:
             np.array(tuple(failures)),
             np.array(tuple(right_censored)),
         )
-        covariance_matrix = np.linalg.inv(hessian_matrix)
-        self.alpha_SE = abs(covariance_matrix[0][0]) ** 0.5
-        self.beta_SE = abs(covariance_matrix[1][1]) ** 0.5
-        self.Cov_alpha_beta = covariance_matrix[0][1]
-        self.alpha_upper = self.alpha * (np.exp(Z * (self.alpha_SE / self.alpha)))
-        self.alpha_lower = self.alpha * (np.exp(-Z * (self.alpha_SE / self.alpha)))
-        self.beta_upper = self.beta * (np.exp(Z * (self.beta_SE / self.beta)))
-        self.beta_lower = self.beta * (np.exp(-Z * (self.beta_SE / self.beta)))
+        try:
+            covariance_matrix = np.linalg.inv(hessian_matrix)
+            self.alpha_SE = abs(covariance_matrix[0][0]) ** 0.5
+            self.beta_SE = abs(covariance_matrix[1][1]) ** 0.5
+            self.Cov_alpha_beta = covariance_matrix[0][1]
+            self.alpha_upper = self.alpha * (np.exp(Z * (self.alpha_SE / self.alpha)))
+            self.alpha_lower = self.alpha * (np.exp(-Z * (self.alpha_SE / self.alpha)))
+            self.beta_upper = self.beta * (np.exp(Z * (self.beta_SE / self.beta)))
+            self.beta_lower = self.beta * (np.exp(-Z * (self.beta_SE / self.beta)))
+        except LinAlgError:
+            # this exception is rare but can occur with some optimizers
+            colorprint(
+                str(
+                    "WARNING: The hessian matrix obtained using the "
+                    + self.optimizer
+                    + " optimizer is non-invertable for the Loglogistic_2P model.\n"
+                    "Confidence interval estimates of the parameters could not be obtained.\n"
+                    "You may want to try fitting the model using a different optimizer."
+                ),
+                text_color="red",
+            )
+            self.alpha_SE = 0
+            self.beta_SE = 0
+            self.Cov_alpha_beta = 0
+            self.alpha_upper = self.alpha
+            self.alpha_lower = self.alpha
+            self.beta_upper = self.beta
+            self.beta_lower = self.beta
 
         results_data = {
             "Parameter": ["Alpha", "Beta"],
@@ -7382,6 +9390,8 @@ class Fit_Loglogistic_2P:
                 underline=True,
             )
             print("Analysis method:", self.method)
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
             print(
                 "Failures / Right censored:",
                 str(str(len(failures)) + "/" + str(len(right_censored))),
@@ -7414,6 +9424,7 @@ class Fit_Loglogistic_2P:
                 __fitted_dist_params=self,
                 CI=CI,
                 CI_type=CI_type,
+                downsample_scatterplot=downsample_scatterplot,
                 **kwargs,
             )
             self.probability_plot = plt.gca()
@@ -7457,14 +9468,15 @@ class Fit_Loglogistic_3P:
         likelihood estimation), or 'LS' (least squares estimation).
         Default is 'MLE'.
     optimizer : str, optional
-        The optimisation algorithm used to find the solution. Must be either
-        'L-BFGS-B', 'TNC', or 'powell'. These are all bound constrained methods.
-        If the bounded method fails, 'nelder-mead' will be used. If
-        'nelder-mead' fails then the initial guess will be returned with a
-        warning. For more information on these optimizers see
-        https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.minimize.html#scipy.optimize.minimize
-        Default is 'L-BFGS-B' if the data is <= 97% right censored or 'TNC' if
-        the data is > 97% right censored.
+        The optimization algorithm used to find the solution. Must be either
+        'TNC', 'L-BFGS-B', 'nelder-mead', or 'powell'. Specifying the optimizer
+        will result in that optimizer being used. To use all of these specify
+        'best' and the best result will be returned. The default behaviour is to
+        try each optimizer in order ('TNC', 'L-BFGS-B', 'nelder-mead', and
+        'powell') and stop once one of the optimizers finds a solution. If the
+        optimizer fails, the initial guess will be returned.
+        For more detail see the `documentation
+        <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
     CI : float, optional
         confidence interval for estimating confidence limits on parameters. Must
         be between 0 and 1. Default is 0.95 for 95% CI.
@@ -7481,6 +9493,13 @@ class Fit_Loglogistic_3P:
         If an array or list is specified then it will be used instead of the
         default array. Any array or list specified must contain values between
         0 and 100.
+    downsample_scatterplot : bool, int, optional
+        If True or None, and there are over 1000 points, then the scatterplot
+        will be downsampled by a factor. The default downsample factor will seek
+        to produce between 500 and 1000 points. If a number is specified, it
+        will be used as the downsample factor. Default is True. This
+        functionality makes plotting faster when there are very large numbers of
+        points. It only affects the scatterplot not the calculations.
     kwargs
         Plotting keywords that are passed directly to matplotlib for the
         probability plot (e.g. color, label, linestyle)
@@ -7545,7 +9564,7 @@ class Fit_Loglogistic_3P:
     If the fitting process encounters a problem a warning will be printed. This
     may be caused by the chosen distribution being a very poor fit to the data
     or the data being heavily censored. If a warning is printed, consider trying
-    a different optimiser.
+    a different optimizer.
 
     If the fitted gamma parameter is less than 0.01, the Loglogistic_3P results
     will be discarded and the Loglogistic_2P distribution will be fitted. The
@@ -7563,6 +9582,7 @@ class Fit_Loglogistic_3P:
         optimizer=None,
         method="MLE",
         percentiles=None,
+        downsample_scatterplot=True,
         **kwargs,
     ):
 
@@ -7589,7 +9609,7 @@ class Fit_Loglogistic_3P:
             LS_method = "LS"
         else:
             LS_method = method
-        LS_results = LS_optimisation(
+        LS_results = LS_optimization(
             func_name="Loglogistic_3P",
             LL_func=Fit_Lognormal_3P.LL,
             failures=failures,
@@ -7603,10 +9623,10 @@ class Fit_Loglogistic_3P:
             self.beta = LS_results.guess[1]
             self.gamma = LS_results.guess[2]
             self.method = str("Least Squares Estimation (" + LS_results.method + ")")
-
+            self.optimizer = None
         # maximum likelihood method
         elif method == "MLE":
-            MLE_results = MLE_optimisation(
+            MLE_results = MLE_optimization(
                 func_name="Loglogistic_3P",
                 LL_func=Fit_Loglogistic_3P.LL,
                 initial_guess=[
@@ -7622,6 +9642,7 @@ class Fit_Loglogistic_3P:
             self.beta = MLE_results.shape
             self.gamma = MLE_results.gamma
             self.method = "Maximum Likelihood Estimation (MLE)"
+            self.optimizer = MLE_results.optimizer
 
         if (
             self.gamma < 0.01
@@ -7658,26 +9679,55 @@ class Fit_Loglogistic_3P:
                 np.array(tuple(failures - self.gamma)),
                 np.array(tuple(right_censored - self.gamma)),
             )
-            covariance_matrix = np.linalg.inv(hessian_matrix)
-            # this is to get the gamma_SE. Unfortunately this approach for alpha_SE and beta_SE give SE values that are very large resulting in incorrect CI plots. This is the same method used by Reliasoft
-            hessian_matrix_for_gamma = hessian(Fit_Loglogistic_3P.LL)(
-                np.array(tuple(params_3P)),
-                np.array(tuple(failures)),
-                np.array(tuple(right_censored)),
-            )
-            covariance_matrix_for_gamma = np.linalg.inv(hessian_matrix_for_gamma)
-            self.alpha_SE = abs(covariance_matrix[0][0]) ** 0.5
-            self.beta_SE = abs(covariance_matrix[1][1]) ** 0.5
-            self.gamma_SE = abs(covariance_matrix_for_gamma[2][2]) ** 0.5
-            self.Cov_alpha_beta = covariance_matrix[0][1]
-            self.alpha_upper = self.alpha * (np.exp(Z * (self.alpha_SE / self.alpha)))
-            self.alpha_lower = self.alpha * (np.exp(-Z * (self.alpha_SE / self.alpha)))
-            self.beta_upper = self.beta * (np.exp(Z * (self.beta_SE / self.beta)))
-            self.beta_lower = self.beta * (np.exp(-Z * (self.beta_SE / self.beta)))
-            self.gamma_upper = self.gamma * (
-                np.exp(Z * (self.gamma_SE / self.gamma))
-            )  # here we assume gamma can only be positive as there are bounds placed on it in the optimizer. Minitab assumes positive or negative so bounds are different
-            self.gamma_lower = self.gamma * (np.exp(-Z * (self.gamma_SE / self.gamma)))
+            try:
+                covariance_matrix = np.linalg.inv(hessian_matrix)
+                # this is to get the gamma_SE. Unfortunately this approach for alpha_SE and beta_SE give SE values that are very large resulting in incorrect CI plots. This is the same method used by Reliasoft
+                hessian_matrix_for_gamma = hessian(Fit_Loglogistic_3P.LL)(
+                    np.array(tuple(params_3P)),
+                    np.array(tuple(failures)),
+                    np.array(tuple(right_censored)),
+                )
+                covariance_matrix_for_gamma = np.linalg.inv(hessian_matrix_for_gamma)
+                self.alpha_SE = abs(covariance_matrix[0][0]) ** 0.5
+                self.beta_SE = abs(covariance_matrix[1][1]) ** 0.5
+                self.gamma_SE = abs(covariance_matrix_for_gamma[2][2]) ** 0.5
+                self.Cov_alpha_beta = covariance_matrix[0][1]
+                self.alpha_upper = self.alpha * (
+                    np.exp(Z * (self.alpha_SE / self.alpha))
+                )
+                self.alpha_lower = self.alpha * (
+                    np.exp(-Z * (self.alpha_SE / self.alpha))
+                )
+                self.beta_upper = self.beta * (np.exp(Z * (self.beta_SE / self.beta)))
+                self.beta_lower = self.beta * (np.exp(-Z * (self.beta_SE / self.beta)))
+                self.gamma_upper = self.gamma * (
+                    np.exp(Z * (self.gamma_SE / self.gamma))
+                )  # here we assume gamma can only be positive as there are bounds placed on it in the optimizer. Minitab assumes positive or negative so bounds are different
+                self.gamma_lower = self.gamma * (
+                    np.exp(-Z * (self.gamma_SE / self.gamma))
+                )
+            except LinAlgError:
+                # this exception is rare but can occur with some optimizers
+                colorprint(
+                    str(
+                        "WARNING: The hessian matrix obtained using the "
+                        + self.optimizer
+                        + " optimizer is non-invertable for the Loglogistic_3P model.\n"
+                        "Confidence interval estimates of the parameters could not be obtained.\n"
+                        "You may want to try fitting the model using a different optimizer."
+                    ),
+                    text_color="red",
+                )
+                self.alpha_SE = 0
+                self.beta_SE = 0
+                self.gamma_SE = 0
+                self.Cov_alpha_beta = 0
+                self.alpha_upper = self.alpha
+                self.alpha_lower = self.alpha
+                self.beta_upper = self.beta
+                self.beta_lower = self.beta
+                self.gamma_upper = self.gamma
+                self.gamma_lower = self.gamma
 
         results_data = {
             "Parameter": ["Alpha", "Beta", "Gamma"],
@@ -7772,6 +9822,8 @@ class Fit_Loglogistic_3P:
                 underline=True,
             )
             print("Analysis method:", self.method)
+            if self.optimizer is not None:
+                print("Optimizer:", self.optimizer)
             print(
                 "Failures / Right censored:",
                 str(str(len(failures)) + "/" + str(len(right_censored))),
@@ -7804,6 +9856,7 @@ class Fit_Loglogistic_3P:
                 __fitted_dist_params=self,
                 CI=CI,
                 CI_type=CI_type,
+                downsample_scatterplot=downsample_scatterplot,
                 **kwargs,
             )
             if self.gamma < 0.01:

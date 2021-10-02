@@ -5,28 +5,74 @@
 Changelog
 ---------
 
-**Version: 0.5.8 --- Currently Unreleased --- Due for release around October 2021**
-'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+**Version: 0.7.0 --- Currently unreleased --- scheduled for release by early October 2021**
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
 **Summary of changes**
 
--    TBA
+-    Version 0.7.0 has a few really useful enhancements. The first of these is the addition of three of the special models (mixture, competing risks, defective subpopulation) to the Fit_Everything function.
+     The second major enhancement is faster plotting for large datasets using downsampling.
+     There are also numerous bug fixes that resolve several longstanding minor issues as well as some minor changes that make some of the algorithms more reliable.
 
 **New features**
 
--    TBA
+-    Added Weibull_Mixture, Weibull_CR, and Weibull_DS to Fit Everything. This also required changes to the plot window sizes.
+-    Changed the histogram plot from Fit_Everything. Legend is now on the left as it was getting too long with 15 items. New method used to scale the CDF histogram when there is censored data which is more accurate than the previous scaling method.
+-    Downsampling for the scatter plot on probability plots. This makes plotting much faster for large datasets (>1000 failures), particularly when using Fit_Everything which has many subplots.
 
 **API Changes**
 
--    TBA
+-    The keyword "downsample_scatterplot" now appears in all fitters and probability plots. It controls whether the scatterplot will apply downsampling. This only affects the plot (when there are over 1000 data points) not the calculations.
 
 **Bug Fixes**
 
--    TBA
+-    Resolved Deprecation Warning from numpy in PoF.strain_life_diagram.
+-    Fit_Everything had a bug when the best distribution was Weibull_Mixture, Weibull_CR, Weibull_DS due to these distributions not having param_title_long.
+-    Probability plots with very large datasets (>10000 items) sometimes resulted in the upper ylim being 1. This is equivalent to infinity on a probability plot and caused an error. It is now manually corrected for.
+-    The least squares method for Fit_Gamma_3P produced a very poor estimate due to a bug. This carried across into the MLE result since LS is used for the MLE initial guess.
+-    The confidence intervals would sometimes not be displayed on probability plots with very small datasets. This was due to the CI arrays still containing 1's at the extremities. This is now corrected using a more robust filter before plotting.
+-    Numerous bug fixes for ALT_Fitters, including the ability to exclude distributions (which was previously being ignored due to an error) and greater stability in the initial guess (which previously could crash with some datasets due to non-invertable matrices).
+-    Fixed a rare bug in all Fitters and all ALT_Fitters when the hessian matrix was non-invertable. This would cause a LinAlgError. Now it will be excepted and print a warning that the confidence intervals can't be obtained.
 
 **Other**
 
--    TBA
+-    Changed the method used by curve_fit within least_squares. Previously was 'dogleg' which was very slow. Changed to 'trf'. This significantly speeds up the location shifted distributions (Weibull_3P, etc.)
+-    Changed the group splitting algorithm used in Fit_Weibull_Mixture and Fit_Weibull_CR. The new method is more robust and provides better a better initial guess of the parameters for MLE.
+
+**Version: 0.6.0 --- Released: 23 July 2021**
+'''''''''''''''''''''''''''''''''''''''''''''
+
+**Summary of changes**
+
+-    Version 0.6.0 has two main improvements. Firstly the behaviour of the optimizers has been changed to be more efficient, and to allow users to try multiple optimizers easily by specifying optimizer='best'.
+     Secondly, the addition of the Defective Subpopulation (DS) and Zero Inflated (ZI) Model now provides a model for which the CDF can range from above 0 to below 1.
+     There are several new Fitters added to take advantage of this as detailed below.
+
+**New features**
+
+-    Ability to specify "best" optimizer will result in multiple optimizers being tried and the best result being used. Optimizers tried are "L-BFGS-B", "TNC", "powell" and "nelder-mead". For more detail see the documentation on `Optimizers <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
+-    DSZI_Model has been added to the Distributions module. This model allows for the CDF to start above 0 and finish below 1.
+-    Fitters for DSZI models, including Fit_Weibull_DS, Fit_Weibull_ZI, Fit_Weibull_DSZI
+
+**API Changes**
+
+-    The optimizer "nelder-mead" will now be accepted as a bounded optimization method. This requires scipy 1.7.0 or higher.
+
+**Bug Fixes**
+
+-    Due to a new Utils function implemented in 0.5.7, a runtime error would occur when the confidence intervals could not be plotted due to too many NaNs in the arrays. This error has now been bypassed.
+
+**Other**
+
+-    The default optimizer has been changed. Previously it was 'L-BFGS-B' for < 97% censored data and 'TNC' above 97% censored data. Now it is 'TNC'. For more detail and a flowchart description of the default behaviour, see the documentation on `Optimizers <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
+-    The optimizer used is now reported in the printed results for all of the Fitters and ALT_Fitters.
+-    Removed support for Python 3.6 due to scipy 1.7.0 dropping support for this Python version.
+-    Change to the algorithm used in Other_functions.make_right_censored_data when making multiply censored data. The algorithm used is explained `here <https://reliability.readthedocs.io/en/latest/Make%20right%20censored%20data.html#example-2>`_.
+-    Significant speed improvement to Other_functions.make_right_censored_data when making multiply censored data.
+-    Change to the versioning system. The new system is major.minor.bugfix whereas the previous system was reserved.major.minor. This should allow more frequent bugfix releases.
+-    Fixed all the tests for ALT_Fitters since this relied upon Other_functions.make_right_censored_data which had a change of algorithm
+-    Speed improvement to Probability_plotting.plotting_positions to make it 7% faster.
+
 
 **Version: 0.5.7 --- Released: 25 June 2021**
 '''''''''''''''''''''''''''''''''''''''''''''
