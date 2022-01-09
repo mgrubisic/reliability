@@ -13,12 +13,13 @@ from reliability import ALT_fitters
 from reliability import PoF
 from reliability import Utils
 from reliability import Convert_data
+from datetime import date
 
 __title__ = 'reliability'
-__version__ = "0.7.0"
+__version__ = "0.8.0"
 __description__ = 'A Python library for reliability engineering'
 __url__ = 'https://reliability.readthedocs.io/en/latest/index.html'
 __author__ = 'Matthew Reid'
 __author_email__ = 'alpha.reliability@gmail.com'
 __license__ = 'LGPLv3'
-__copyright__ = 'Copyright 2019-2021 Matthew Reid'
+__copyright__ = "Copyright 2019-{}, Matthew Reid".format(date.today().year)

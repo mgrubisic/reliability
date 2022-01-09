@@ -1,42 +1,44 @@
 """
 Utils (utilities)
 
-This is a collection of utilities that are used throughout the python reliability library.
-Functions have been placed here as to declutter the dropdown lists of your IDE and to provide a common resource across multiple modules.
-It is not expected that users will be using any utils directly.
+This is a collection of utilities that are used throughout the python
+reliability library. Functions have been placed here as to declutter the
+dropdown lists of your IDE and to provide a common resource across multiple
+modules. It is not expected that users will be using any utils directly.
 
 Included functions are:
-ALT_MLE_optimization - performs optimization for the ALT_Fitters
-ALT_fitters_input_checking - performs input checking for the ALT_Fitters
-ALT_least_squares - least squares estimation for ALT_Fitters
-ALT_prob_plot - probability plotting for ALT_Fitters
-LS_optimization - least squares optimization for Fitters
-MLE_optimization - maximum likelihood estimation optimization for Fitters
-anderson_darling - calculated the anderson darling (AD) goodness of fit statistic
-axes_transforms - Custom scale functions used in Probability_plotting
-clean_CI_arrays - cleans the CI arrays of nan and illegal values
-colorprint - prints to the console in color, bold, italic, and underline
-distribution_confidence_intervals - calculates and plots the confidence intervals for the distributions
-fill_no_autoscale - creates a shaded region without adding it to the global list of objects to consider when autoscale is calculated
-fitters_input_checking - error checking and default values for all the fitters
-generate_X_array - generates the X values for all distributions
-get_axes_limits - gets the current axes limits
-least_squares - provides parameter estimates for distributions using the method of least squares. Used extensively by Fitters.
-life_stress_plot - generates the life stress plot for ALT_Fitters
-line_no_autoscale - creates a line without adding it to the global list of objects to consider when autoscale is calculated
-linear_regression - given x and y data it will return slope and intercept of line of best fit. Includes options to specify slope or intercept.
-make_fitted_dist_params_for_ALT_probplots - creates a class structure for the ALT probability plots to give to Probability_plotting
-no_reverse - corrects for reversals in confidence intervals
-probability_plot_xylims - sets the x and y limits on probability plots
-probability_plot_xyticks - sets the x and y ticks on probability plots
-removeNaNs - removes nan
-restore_axes_limits - restores the axes limits based on values from get_axes_limits()
-round_to_decimals - applies different rounding rules to numbers above and below 1 so that small numbers do not get rounded to 0.
-transform_spaced - Creates linearly spaced array (in transform space) based on a specified transform. This is like np.logspace but it can make an array that is weibull spaced, normal spaced, etc.
-validate_CI_params - checks that the confidence intervals have all the right parameters to be generated
-write_df_to_xlsx - converts a dataframe to an xlsx file
-xy_transform - provides conversions between spatial (-inf,inf) and axes coordinates (0,1).
-zeroise_below_gamma - sets all y values to zero when x < gamma. Used when the HF and CHF equations are specified
+
+- ALT_MLE_optimization - performs optimization for the ALT_Fitters
+- ALT_fitters_input_checking - performs input checking for the ALT_Fitters
+- ALT_least_squares - least squares estimation for ALT_Fitters
+- ALT_prob_plot - probability plotting for ALT_Fitters
+- LS_optimization - least squares optimization for Fitters
+- MLE_optimization - maximum likelihood estimation optimization for Fitters
+- anderson_darling - calculated the anderson darling (AD) goodness of fit statistic
+- axes_transforms - Custom scale functions used in Probability_plotting
+- clean_CI_arrays - cleans the CI arrays of nan and illegal values
+- colorprint - prints to the console in color, bold, italic, and underline
+- distribution_confidence_intervals - calculates and plots the confidence intervals for the distributions
+- fill_no_autoscale - creates a shaded region without adding it to the global list of objects to consider when autoscale is calculated
+- fitters_input_checking - error checking and default values for all the fitters
+- generate_X_array - generates the X values for all distributions
+- get_axes_limits - gets the current axes limits
+- least_squares - provides parameter estimates for distributions using the method of least squares. Used extensively by Fitters.
+- life_stress_plot - generates the life stress plot for ALT_Fitters
+- line_no_autoscale - creates a line without adding it to the global list of objects to consider when autoscale is calculated
+- linear_regression - given x and y data it will return slope and intercept of line of best fit. Includes options to specify slope or intercept.
+- make_fitted_dist_params_for_ALT_probplots - creates a class structure for the ALT probability plots to give to Probability_plotting
+- no_reverse - corrects for reversals in confidence intervals
+- probability_plot_xylims - sets the x and y limits on probability plots
+- probability_plot_xyticks - sets the x and y ticks on probability plots
+- removeNaNs - removes nan
+- restore_axes_limits - restores the axes limits based on values from get_axes_limits()
+- round_to_decimals - applies different rounding rules to numbers above and below 1 so that small numbers do not get rounded to 0.
+- transform_spaced - Creates linearly spaced array (in transform space) based on a specified transform. This is like np.logspace but it can make an array that is weibull spaced, normal spaced, etc.
+- validate_CI_params - checks that the confidence intervals have all the right parameters to be generated
+- write_df_to_xlsx - converts a dataframe to an xlsx file
+- xy_transform - provides conversions between spatial (-inf,inf) and axes coordinates (0,1).
+- zeroise_below_gamma - sets all y values to zero when x < gamma. Used when the HF and CHF equations are specified
 """
 
 import numpy as np
@@ -67,19 +69,38 @@ warnings.filterwarnings(
 
 def round_to_decimals(number, decimals=5, integer_floats_to_ints=True):
     """
-    This function is used to round a number to a specified number of decimals. It is used heavily in the formatting of the parameter titles within reliability.Distributions
-    It is not the same as rounding to a number of significant figures as it keeps preceeding zeros for numbers less than 1.
+    This function is used to round a number to a specified number of decimals.
+    It is used heavily in the formatting of the parameter titles within
+    reliability.Distributions
 
-    Inputs:
-    number - the number to be rounded
-    decimals - the number of decimals (not including preceeding zeros) that are to be in the output
-    integer_floats_to_ints - True/False. Default is True. Removes trailing zeros if there are no significant decimals (eg. 12.0 becomes 12).
+    It is not the same as rounding to a number of significant figures as it
+    keeps preceeding zeros for numbers less than 1.
 
-    examples (with decimals = 5):
-    1234567.1234567 ==> 1234567.12345
-    0.0001234567 ==> 0.00012345
-    1234567 ==> 1234567
-    0.00 ==> 0
+    Parameters
+    ----------
+    number : float
+        The number to be rounded
+    decimals : int
+        The number of decimals (not including preceeding zeros) that are to be
+        in the output
+    integer_floats_to_ints : bool, optional
+        Default is True. Removes trailing zeros from floats if there are no
+        significant decimals (eg. 12.0 becomes 12).
+
+    Returns
+    -------
+    number_rounded : float, int
+        The number rounded. If the number has no trailing zeros and
+        integer_floats_to_int is True then the output will be an int.
+
+    Notes
+    -----
+    Examples (with decimals = 5):
+
+    - 1234567.1234567 ==> 1234567.12345
+    - 0.0001234567 ==> 0.00012345
+    - 1234567 ==> 1234567
+    - 0.00 ==> 0
     """
 
     if np.isfinite(number):  # check the input is not NaN
@@ -126,18 +147,44 @@ def transform_spaced(
     beta=None,
 ):
     """
-    Creates linearly spaced array based on a specified transform
-    This is similar to np.linspace or np.logspace but is designed for weibull space, exponential space, normal space, gamma space, loglogistic space, and beta space.
-    It is useful if the points generated are going to be plotted on axes that are scaled using the same transform and need to look equally spaced in the transform space
-    Note that lognormal is the same as normal, since the x-axis is what is transformed, not the y-axis.
+    Creates linearly spaced array based on a specified transform.
 
-    :param transform (str): the transform name. Must be either weibull, exponential, normal, gamma, or beta.
-    :param y_upper (float): the lower bound (must be within the bounds 0 to 1). Default is 1e-8
-    :param y_lower (float): the upper bound (must be within the bounds 0 to 1). Default is 1-1e-8
-    :param num (int): the number of values in the array. Default is 1000.
-    :param alpha (int, float): the alpha value of the beta distribution. Only used if the transform is beta
-    :param beta (int, float): the beta value of the beta or gamma distribution. Only used if the transform is beta or gamma
-    :return: linearly spaced array (appears linearly spaced when plotted in transform space)
+    This is similar to np.linspace or np.logspace but is designed for weibull
+    space, exponential space, normal space, gamma space, loglogistic space,
+    gumbel space and beta space.
+
+    It is useful if the points generated are going to be plotted on axes that
+    are scaled using the same transform and need to look equally spaced in the
+    transform space.
+
+    Parameters
+    ----------
+    transform : str
+        The transform name. Must be either weibull, exponential, normal, gamma,
+        gumbel, loglogistic, or beta.
+    y_upper : float, optional
+        The lower bound (must be within the bounds 0 to 1). Default is 1e-8
+    y_lower : float, optional
+        The upper bound (must be within the bounds 0 to 1). Default is 1-1e-8
+    num : int, optional
+        The number of values in the array. Default is 1000.
+    alpha : int, float, optional
+        The alpha value of the beta distribution. Only used if the transform is
+        beta
+    beta : int, float, optional
+        The beta value of the beta or gamma distribution. Only used if the
+        transform is beta or gamma
+
+    Returns
+    -------
+    transformed_array : array
+        transform spaced array. This appears linearly spaced when plotted in
+        transform space.
+
+    Notes
+    -----
+    Note that lognormal is the same as normal, since the x-axis is what is
+    transformed in lognormal, not the y-axis.
     """
     np.seterr("ignore")  # this is required due to an error in scipy.stats
     if y_lower > y_upper:
@@ -204,6 +251,10 @@ def transform_spaced(
 class axes_transforms:
     """
     Custom scale functions used in Probability_plotting
+    Each of these functions is either a forward or inverse transform.
+
+    There are no parameters for this class, only a collection of subfunctions
+    which can be called individually to perform the transforms.
     """
 
     @staticmethod
@@ -266,8 +317,24 @@ class axes_transforms:
 def get_axes_limits():
     """
     This function works in a pair with restore_axes_limits
-    This function gets the previous xlim and ylim and also checks whether there was a previous plot (based on whether the default 0,1 axes had been changed.
-    It returns a list of items that are used by restore_axes_limits after the plot has been performed
+    This function gets the previous xlim and ylim and also checks whether there
+    was a previous plot (based on whether the default 0,1 axes had been
+    changed).
+
+    It returns a list of items that are used by restore_axes_limits after the
+    plot has been performed.
+
+    Parameters
+    ----------
+    None
+        The plot properties are extracted automatically for analysis
+
+    Returns
+    -------
+    output : list
+        A list of [xlims, ylims, use_prev_lims]. These values are used by
+        restore_axes_limits to determine how the axes limits need to be
+        changed after plotting.
     """
     xlims = plt.xlim(auto=None)  # get previous xlim
     ylims = plt.ylim(auto=None)  # get previous ylim
@@ -284,15 +351,39 @@ def get_axes_limits():
 
 def restore_axes_limits(limits, dist, func, X, Y, xvals=None, xmin=None, xmax=None):
     """
-    This function works in a pair with get_axes_limits
-    Inputs:
-    limits - a list of xlim, ylim, use_prev_lims created by get_axes_limits
-    dist - the distribution object to which it is applied
-    X - the xvalues of the plot
-    Y - the yvalues of the plot
-    xvals - the xvals specified. May be None if not specified
+    This function works in a pair with get_axes_limits. Using the values
+    producted by get_axes_limits which are [xlims, ylims, use_prev_lims], this
+    function will determine how to change the axes limits to meet the style
+    requirements of the library.
 
-    No scaling will be done if the axes are not linear due to errors that result from log and function scaled axes when a limit of 0 is used.
+    Parameters
+    ----------
+    limits : list
+        A list of [xlims, ylims, use_prev_lims] created by get_axes_limits
+    dist : object
+        The distribution object which the axes limits are influenced by.
+    X : array, list
+        The x-values of the plot
+    Y : array, list
+        The y-values of the plot
+    xvals : array, list, optional
+        The plot xvals if specified. May be None if not specified.
+    xmin : int, float, optional
+        The plot xmin if specified. May be None if not specified.
+    xmax : int, float, optional
+        The plot xmax if specified. May be None if not specified.
+
+    Returns
+    -------
+    None
+        This function will scale the plot but it does not return anything
+
+    Notes
+    -----
+    No scaling will be done if the axes are not linear due to errors that result
+    from log and function scaled axes when a limit of 0 is used. This means that
+    this function is not able to be applied to the probability plots are they
+    have non-linear scaled axes.
     """
     xlims = limits[0]
     ylims = limits[1]
@@ -421,9 +512,29 @@ def restore_axes_limits(limits, dist, func, X, Y, xvals=None, xmin=None, xmax=No
 
 def generate_X_array(dist, xvals=None, xmin=None, xmax=None):
     """
-    generates the array of X values for each of the PDf, CDF, SF, HF, CHF functions within reliability.Distributions
-    This is done with a variety of cases in order to ensure that for regions of high gradient (particularly asymptotes to inf) the points are more concentrated.
-    This ensures that the line always looks as smooth as possible using only 200 data points
+    Generates the array of X values for each of the PDf, CDF, SF, HF, CHF
+    functions within reliability.Distributions
+
+    This is done with a variety of cases in order to ensure that for regions of
+    high gradient (particularly asymptotes to inf) the points are more
+    concentrated. This ensures that the line always looks as smooth as possible
+    using only 200 data points.
+
+    Parameters
+    ----------
+    dist : object
+        The distribution object
+    xvals : array, list, optional
+        The xvals for the plot if specified
+    xmin : array, list, optional
+        The xmin for the plot if specified
+    xmax : array, list, optional
+        The xmax for the plot if specified
+
+    Returns
+    -------
+    X : array
+        The X array that was generated.
     """
 
     # obtain the xvals array
@@ -625,9 +736,28 @@ def no_reverse(x, CI_type, plot_type):
     """
     This is used to convert an array that decreases and then increases into an
     array that decreases then is constant at its minimum.
-    The always decreasing rule will apply unless CI_type = 'time' and plot_type = 'CHF'
+
+    The always decreasing rule will apply unless CI_type = 'time' and
+    plot_type = 'CHF'
+
     This function is used to provide a correction to the confidence intervals
     which mathematically are correct but practically should never decrease.
+
+    Parameters
+    ----------
+    x : array, list
+        The array or list to which the no_reverse correction is applied
+    CI_type : str
+        Must be either 'time' or 'reliability'
+    plot_type : str
+        Must be either 'CDF', 'SF', or 'CHF'
+
+    Returns
+    -------
+    x : array
+        A corrected form of the input x that obeys the always decreasing rule
+        (or the always increasing rule in the case of CI_type = 'time' and
+        plot_type = 'CHF').
     """
     if type(x) not in [np.ndarray, list]:
         raise ValueError("x must be a list or array")
@@ -656,8 +786,28 @@ def no_reverse(x, CI_type, plot_type):
 
 def zeroise_below_gamma(X, Y, gamma):
     """
-    This will make all Y values 0 for the corresponding X values being below gamma.
-    Used by HF and CHF which need to be zeroized if the gamma shifted form of the equation is used.
+    This will make all Y values 0 for the corresponding X values being below
+    gamma (the threshold parameter for Weibull, Exponential, Gamma, Loglogistic,
+    and Lognormal).
+
+    Used by HF and CHF which need to be zeroized if the gamma shifted form of
+    the equation is used.
+
+    Parameters
+    ----------
+    X : array, list
+        The x values of the distribution. These areused to determine whis Y
+        values to zeroize.
+    Y : array, list
+        The y-values of the distribution
+    gamma : float, int
+        The gamma parameter. This is the point at which Y values corresponding
+        to X values below gamma will be zeroized.
+
+    Returns
+    -------
+    Y : array
+        The zeroized Y array
     """
     if gamma > 0:
         if len(np.where(X > gamma)[0]) == 0:
@@ -669,10 +819,30 @@ def zeroise_below_gamma(X, Y, gamma):
 
 def xy_transform(value, direction="forward", axis="x"):
     """
-    Converts between data values and axes coordinates (based on xlim() or ylim()).
-    If direction is forward the returned value will always be between 0 and 1 provided value is on the plot.
-    If direction is reverse the input should be between 0 and 1 and the returned value will be the data value based on the current plot lims
-    axis must be x or y
+    This function converts between data values and axes coordinates (based on
+    xlim() or ylim()).
+
+    If direction is forward the returned value will always be between 0 and 1
+    provided the value is on the plot.
+
+    If direction is reverse the input should be between 0 and 1 and the returned
+    value will be the data value based on the current plot lims
+
+    Parameters
+    ----------
+    value: int, float, list, array
+        The value/s to be transformed
+    direction : str, optional
+        Must be "forward" or "inverse". Default is "forward"
+    axis : str, optional
+        Must be "x" or "y". Default is "x".
+
+    Returns
+    -------
+    transformed_values : float, array
+        The transformed values. This will be a float if the input was int or
+        float, or an array if the input was list or array.
+
     """
     if direction not in ["reverse", "inverse", "inv", "rev", "forward", "fwd"]:
         raise ValueError('direction must be "forward" or "reverse"')
@@ -683,17 +853,15 @@ def xy_transform(value, direction="forward", axis="x"):
     if direction in ["reverse", "inverse", "inv", "rev"]:
         if type(value) in [int, float, np.float64]:
             if axis == "x":
+                # x transform
                 transformed_values = ax.transData.inverted().transform(
                     (ax.transAxes.transform((value, 0.5))[0], 0.5)
-                )[
-                    0
-                ]  # x transform
+                )[0]
             else:
+                # y transform
                 transformed_values = ax.transData.inverted().transform(
                     (1, ax.transAxes.transform((1, value))[1])
-                )[
-                    1
-                ]  # y transform
+                )[1]
         elif type(value) in [list, np.ndarray]:
             transformed_values = []
             for item in value:
@@ -749,8 +917,39 @@ def probability_plot_xylims(
     x, y, dist, spacing=0.1, gamma_beta=None, beta_alpha=None, beta_beta=None
 ):
     """
-    finds the x and y limits of probability plots.
-    This function is called by probability_plotting
+    This function finds what the x and y limits of probability plots should be
+    and sets these limits. This is similar to autoscaling, but the rules here
+    are different to the matplotlib defaults.
+    It is used extensively by the functions within the probability_plotting
+    module to achieve the plotting style used within this library.
+
+    Parameters
+    ----------
+    x : list, array
+        The x-values from the plot
+    y : list, array
+        The y-values from the plot
+    dist : str
+        Must be either "weibull", "lognormal", "loglogistic", "normal", "gamma",
+        "exponential", "beta", or "gumbel".
+    spacing : float
+        The spacing between the points and the edge of the plot. Default is 0.1
+        for 10% spacing.
+    gamma_beta : float, int, optional
+        The beta parameter from the gamma distribution. Only required if dist =
+        "gamma".
+    beta_alpha : float, int, optional
+        The alpha parameter from the beta distribution. Only required if dist =
+        "beta".
+    beta_beta : float, int, optional
+        The beta parameter from the beta distribution. Only required if dist =
+        "beta".
+
+    Returns
+    -------
+    None
+        There are no outputs from this function. It will set the xlim() and
+        ylim() of the probability plot automatically.
     """
 
     # remove inf
@@ -860,19 +1059,52 @@ def probability_plot_xylims(
 
 def probability_plot_xyticks(yticks=None):
     """
-    Sets the x and y ticks for probability plots
-    X ticks are selected using either MaxNLocator or LogLocator.
-    X ticks are formatted using a custom formatter.
-    Y ticks are specified with FixedLocator due to their irregular spacing. Minor y ticks use MaxNLocator
-    Y ticks are formatted using a custom Percent Formatter that handles decimals better
-    This function is called by probability_plotting
+    This function sets the x and y ticks for probability plots.
+
+    X ticks are selected using either MaxNLocator or LogLocator. X ticks are
+    formatted using a custom formatter.
+
+    Y ticks are specified with FixedLocator due to their irregular spacing.
+    Minor y ticks use MaxNLocator. Y ticks are formatted using a custom Percent
+    Formatter that handles decimals better than the default.
+
+    This function is used by all the probability plots.
+
+    Within this function are several sub functions that are called internally.
+
+    Parameters
+    ----------
+    yticks : list, array
+        The yticks to use. If unspecified, the default yticks are [0.0001, 0.001,
+        0.002, 0.005, 0.01, 0.02, 0.03, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7,
+        0.8, 0.9, 0.95, 0.99, 0.999, 0.9999, 0.999999].
+
+    Returns
+    -------
+    None
+        This function will set the ticks but it does not return anything.
     """
 
     def get_tick_locations(major_or_minor, in_lims=True, axis="x"):
         """
-        returns the major or minor tick locations for the current axis
-        if in_lims=True then it will only return the ticks that are within the current xlim() or ylim(). Default is True
-        axis must be x or y. Default is x
+        returns the major or minor tick locations for the current axis.
+
+        Parameters
+        ----------
+        major_or_minor : str
+            Specifies which ticks to get. Must be either "major" or
+            "minor".
+        in_lims : bool, optional
+            If in_lims=True then it will only return the ticks that are within
+            the current xlim() or ylim(). Default is True.
+        axis : str, optional
+            Specifies which axis to get the ticks for. Must be "x" or "y".
+            Default is "x".
+
+        Returns
+        -------
+        locations : array
+            The tick locations
         """
         if axis == "x":
             AXIS = ax.xaxis
@@ -903,6 +1135,16 @@ def probability_plot_xyticks(yticks=None):
     def customFormatter(value, _):
         """
         Provides custom string formatting that is used for the xticks
+
+        Parameters
+        ----------
+        value : int, float
+            The value to be formatted
+
+        Returns
+        -------
+        label : str
+            The formatted string
         """
         if value == 0:
             label = "0"
@@ -929,7 +1171,19 @@ def probability_plot_xyticks(yticks=None):
     def customPercentFormatter(value, _):
         """
         Provides custom percent string formatting that is used for the yticks
-        Slightly different than PercentFormatter as it does not force a particular number of decimals. ie. 99.00 becomes 99 while 99.99 still displays as such.
+        This function is slightly different than matplotlib's PercentFormatter
+        as it does not force a particular number of decimals. ie. in this
+        function 99.00 becomes 99 while 99.99 still displays as such.
+
+        Parameters
+        ----------
+        value : int, float
+            The value to be formatted
+
+        Returns
+        -------
+        label : str
+            The formatted string
         """
         value100 = value * 100
         value100dec = round(
@@ -943,7 +1197,19 @@ def probability_plot_xyticks(yticks=None):
         return label
 
     def get_edge_distances():
-        "finds the sum of the distance (in axes coords (0 to 1)) of the distances from the edge ticks to the edges"
+        """
+        Finds the sum of the distance (in axes coords (0 to 1)) of the distances
+        from the edge ticks to the edges
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        distances : float
+            The edge distances
+        """
         xtick_locations = get_tick_locations("major", axis="x")
         left_tick_distance = xy_transform(
             xtick_locations[0], direction="forward", axis="x"
@@ -1039,8 +1305,21 @@ def probability_plot_xyticks(yticks=None):
 
 def anderson_darling(fitted_cdf, empirical_cdf):
     """
-    Calculates the Anderson-Darling goodness of fit statistic
-    These formulas are based on the method used in MINITAB which gives an adjusted form of the original AD statistic described on Wikipedia
+    Calculates the Anderson-Darling goodness of fit statistic.
+    These formulas are based on the method used in MINITAB which gives an
+    adjusted form of the original AD statistic described on Wikipedia.
+
+    Parameters
+    ----------
+    fitted_cdf : list, array
+        The fitted CDF values at the data points
+    empirical_cdf  : list, array
+        The empirical (rank adjustment) CDF values at the data points
+
+    Returns
+    -------
+    AD : float
+        The anderson darling (adjusted) test statistic.
     """
     Z = np.sort(np.asarray(fitted_cdf))
     Zi = np.hstack([Z, 1 - 1e-12])
@@ -1072,9 +1351,38 @@ def colorprint(
     italic=False,
 ):
     """
-    colorprint - Provides easy access to color printing in the console
-    Parameter names are self explanatory. Color options are grey, red, green, yellow, blue, pink, turquoise.
+    Provides easy access to color printing in the console.
+
+    This function is used to print warnings in red text, but it can also do a
+    lot more.
+
+    Parameters
+    ----------
+    string
+    text_color : str, None, optional
+        Must be either grey, red, green, yellow, blue, pink, or turquoise. Use
+        None to leave the color as white. Default is None.
+    background_color : str, None, optional
+        Must be either grey, red, green, yellow, blue, pink, or turquoise. Use
+        None to leave the color as the transparent. Default is None.
+    bold : bool, optional
+        Default is False.
+    underline : bool, optional
+        Default is False.
+    italic : bool, optional
+        Default is False.
+
+    Returns
+    -------
+    None
+        The output is printed to the console.
+
+    Notes
+    -----
     Some flexibility in color names is allowed. eg. red and r will both give red.
+
+    As there is only one string argument, if you have multiple strings to print,
+    you must first combine them using str(string_1,string_2,...).
     """
     text_colors = {
         "grey": "\033[90m",
@@ -1190,7 +1498,80 @@ def colorprint(
 
 class fitters_input_checking:
     """
-    performs error checking and some basic default operations for all the inputs given to each of the fitters
+    This function performs error checking and some basic default operations for
+    all the inputs given to each of the fitters.
+
+    Parameters
+    ----------
+    dist : str
+        Must be one of "Everything", "Weibull_2P", "Weibull_3P", "Gamma_2P",
+        "Gamma_3P", "Exponential_1P", "Exponential_2P", "Gumbel_2P",
+        "Normal_2P", "Lognormal_2P", "Lognormal_3P", "Loglogistic_2P",
+        "Loglogistic_3P", "Beta_2P", "Weibull_Mixture", "Weibull_CR",
+        "Weibull_DSZI", "Weibull_DS", "Weibull_ZI".
+    failures : array, list
+        The failure data
+    right_censored : array, list, optional
+        The right censored data
+    method : str, optional
+        Must be either "MLE","LS","RRX", or "RRY". Some flexibility in input is
+        tolerated. eg "LS", "LEAST SQUARES", "LSQ", "NLRR", "NLLS" will all be
+        recogsised as "LS". Default is MLE
+    optimizer : str, optional
+        Must be one of "TNC", "L-BFGS-B", "nelder-mead", "powell", "best".
+        Default is None which will result in each being tried until one
+        succeeds. For more detail see the `documentation <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
+    CI : float, optional
+        Confidence interval. Must be between 0 and 1. Default is 0.95 for 95%
+        confidence interval (2 sided).
+    quantiles : array, list, bool, optional
+        An array or list of the quantiles to calculate. If True then the
+        default array will be used. Default array is [0.01, 0.05, 0.1, 0.2, 0.25,
+        0.5, 0.75, 0.8, 0.9, 0.95, 0.99].
+        If False then no quantiles will be calculated. Default is False.
+    force_beta : float, int, optional
+        Used to force beta for the Weibull_2P distribution. Default is None
+        which will not force beta.
+    force_sigma : float, int, optional
+        Used to force sigma for the Normal_2P and Lognormal_2P distributions.
+        Default is None which will not force sigma.
+    CI_type : str, optional
+        Must be either "time" or "reliability". Default is None which results in
+        "time" being used (controlled in Fitters). Some flexibility is strings
+        is allowed. eg. "r", "R", "rel", "REL", "reliability", "RELIABILITY"
+        will all be recognized as "reliability".
+
+    Returns
+    -------
+    failures : array
+        The failure times
+    right_censored : array
+        The right censored times. This will be an empty array if the input was
+        None.
+    CI : float
+        The confidence interval (between 0 and 1)
+    method : str, None
+        This will return "MLE", "LS", "RRX", "RRY" or None.
+    optimizer : str, None
+        This will return "TNC", "L-BFGS-B", "nelder-mead", "powell", "best", or
+        None.
+    quantiles : array, None
+        The quantiles or None.
+    force_beta : float, None
+        The beta parameter to be forced in Weibull_2P
+    force_sigma : float, None
+            The sigma parameter to be forced in Normal_2P, or Lognormal_2P
+    CI_type : str, None
+        "time", "reliability", or None
+
+    Notes
+    -----
+    For full detail on what is checked and the errors produced, you should read
+    the source code.
+
+    Some returns are None if the input is None. How None affects the behavior
+    is governed by other functions such as the individual fitters and other
+    Utils.
     """
 
     def __init__(
@@ -1201,7 +1582,7 @@ class fitters_input_checking:
         method=None,
         optimizer=None,
         CI=0.95,
-        percentiles=False,
+        quantiles=False,
         force_beta=None,
         force_sigma=None,
         CI_type=None,
@@ -1366,18 +1747,19 @@ class fitters_input_checking:
                     'method must be either "MLE" (maximum likelihood estimation), "LS" (least squares), "RRX" (rank regression on X), or "RRY" (rank regression on Y).'
                 )
 
-        # percentiles error checking
-        if type(percentiles) in [str, bool]:
-            if percentiles in ["auto", True, "default", "on"]:
-                percentiles = np.array(
-                    [1, 5, 10, 20, 25, 50, 75, 80, 90, 95, 99]
-                )  # percentiles to be used as the defaults in the table of percentiles #
-        elif percentiles is not None:
-            if type(percentiles) not in [list, np.ndarray]:
-                raise ValueError("percentiles must be a list or array")
-            percentiles = np.asarray(percentiles)
-            if max(percentiles) >= 100 or min(percentiles) <= 0:
-                raise ValueError("percentiles must be between 0 and 100")
+        # quantiles error checking
+        if type(quantiles) in [str, bool]:
+            if quantiles in ["auto", True, "default", "on"]:
+                # quantiles to be used as the defaults in the table of quantiles #
+                quantiles = np.array(
+                    [0.01, 0.05, 0.1, 0.2, 0.25, 0.5, 0.75, 0.8, 0.9, 0.95, 0.99]
+                )
+        elif quantiles is not None:
+            if type(quantiles) not in [list, np.ndarray]:
+                raise ValueError("quantiles must be a list or array")
+            quantiles = np.asarray(quantiles)
+            if max(quantiles) >= 1 or min(quantiles) <= 0:
+                raise ValueError("quantiles must be between 0 and 1")
 
         # force_beta and force_sigma error checking
         if force_beta is not None:
@@ -1477,7 +1859,7 @@ class fitters_input_checking:
         self.CI = CI
         self.method = method
         self.optimizer = optimizer
-        self.percentiles = percentiles
+        self.quantiles = quantiles
         self.force_beta = force_beta
         self.force_sigma = force_sigma
         self.CI_type = CI_type
@@ -1485,7 +1867,86 @@ class fitters_input_checking:
 
 class ALT_fitters_input_checking:
     """
-    performs error checking and some basic default operations for all the inputs given to each of the ALT_fitters
+    This function performs error checking and some basic default operations for
+    all the inputs given to each of the ALT_fitters.
+
+    Parameters
+    ----------
+    dist : str
+        Must be one of "Exponential", "Weibull", "Lognormal", "Normal",
+        "Everything".
+    life_stress_model : str
+        Must be one of "Exponential", "Eyring", "Power","Dual_Exponential",
+        "Power_Exponential", "Dual_Power", "Everything".
+    failures : array, list
+        The failure data
+    failure_stress_1 : array, list
+        The stresses corresponding to the failure data
+    failure_stress_2 : array, list, optional
+        The second stresses corresponding to the failure data. Only required for
+        dual stress models. Default is None.
+    right_censored : array, list, optional
+        The right censored data. Default is None.
+    right_censored_stress_1 : array, list, optional
+        The stresses corresponding to the right censored data. Default is None.
+    right_censored_stress_2 : array, list, optional
+        The second stresses corresponding to the right censored data. Only
+        required for dual stress models. Default is None.
+    CI : float, optional
+        The confidence interval (between 0 and 1). Default is 0.95 for 95%
+        confidence interval (two sided).
+    optimizer : str, None
+        This will return "TNC", "L-BFGS-B", "nelder-mead", "powell", "best", or
+        None. Default is None.
+    use_level_stress : float, int, list, array, optional
+        The use level stress. Must be float or int for single stress models.
+        Must be array or list [stress_1, stress_2] for dual stress models.
+        Default is None.
+
+    Returns
+    -------
+    failures : array
+        The failure times
+    failure_stress_1 : array
+        The failure stresses
+    failure_stress_2 : array
+        The second failure stresses. This will be an empty array if the input
+        was None.
+    right_censored : array
+        The right censored times. This will be an empty array if the input was
+        None.
+    right_censored_stress_1 : array
+        The right censored failure stresses. This will be an empty array if the
+        input was None.
+    right_censored_stress_2 : array
+        The right censored second failure stresses. This will be an empty array
+        if the input was None.
+    CI : float
+        The confidence interval (between 0 and 1)
+    optimizer : str, None
+        This will return "TNC", "L-BFGS-B", "nelder-mead", "powell", "best", or
+        None.
+    use_level_stress : float, array, None
+        The use level stress. This will be a float for single stress models, or
+        an array for dual stress models. This will be None if the input was
+        None.
+    failure_groups : array
+        An array of arrays. This is the failure data grouped by failure
+        stresses.
+    right_censored_groups : array
+        An array of arrays. This is the right censored data grouped by right
+        censored stresses.
+    stresses_for_groups : array
+        An array of arrays. These are the stresses for each of the groups.
+
+    Notes
+    -----
+    For full detail on what is checked and the errors produced, you should read
+    the source code.
+
+    Some returns are None if the input is None. How None affects the behavior
+    is governed by other functions such as the individual ALT fitters and other
+    Utils.
     """
 
     def __init__(
@@ -1903,8 +2364,19 @@ class ALT_fitters_input_checking:
 
 def validate_CI_params(*args):
     """
-    Returns False if any of the args is None or Nan
-    Else returns True.
+    Returns False if any of the args is None or Nan, else returns True.
+    This function is different to using all() because it performs the checks
+    using np.isfinite(arg).
+
+    Parameters
+    ----------
+    *args : bool
+        Any number of boolean arguments
+
+    Returns
+    -------
+    is_valid : bool
+        False if any of the args is None or Nan else returns True.
     """
     is_valid = True
     for arg in args:
@@ -1913,10 +2385,45 @@ def validate_CI_params(*args):
     return is_valid
 
 
-def clean_CI_arrays(xlower, xupper, ylower, yupper, plot_type="CDF"):
+def clean_CI_arrays(xlower, xupper, ylower, yupper, plot_type="CDF", x=None, q=None):
     """
-    cleans the CI arrays of nans and numbers <= 0
-    also removes numbers >= 1 if plot type is CDF or SF
+    This function cleans the CI arrays of nans and numbers <= 0 and also removes
+    numbers >= 1 if plot_type is CDF or SF.
+
+    Parameters
+    ----------
+    xlower : list, array
+        The lower x array for the confidence interval
+    xupper : list, array
+        The upper x array for the confidence interval
+    ylower : list, array
+        The lower y array for the confidence interval
+    yupper : list, array
+        The upper y array for the confidence interval
+    plot_type : str, optional
+        Must be "CDF", "SF", "CHF". Default is "CDF"
+    x : array, optional
+        The x array for CI extraction
+    q : array, optional
+        The q array for CI extraction
+
+    Returns
+    -------
+    xlower : array
+        The "cleaned" lower x array for the confidence interval
+    xupper : array
+        The "cleaned" upper x array for the confidence interval
+    ylower : array
+        The "cleaned" lower y array for the confidence interval
+    ylower : array
+        The "cleaned" upper y array for the confidence interval
+
+    Notes
+    -----
+    The returned arrays will all be the same length
+
+    The cleaning is done by deleting values. If the cleaned arrays are < 2 items
+    in length then an error will be triggered.
     """
     # format the input as arrays
     xlower = np.asarray(xlower)
@@ -1968,7 +2475,7 @@ def clean_CI_arrays(xlower, xupper, ylower, yupper, plot_type="CDF"):
         yupper_out2 = yupper_out
 
     # remove values <=0 for all cases
-    tol = 1e-50  # tolerance for equivalent to 0. accounts for precision error
+    tol = 1e-50  # tolerance for equivalent to zero. Accounts for precision error
     for i in np.arange(len(xlower_out2)):
         if ylower_out2[i] > tol and yupper_out2[i] > tol:
             xlower_out3 = np.append(xlower_out3, xlower_out2[i])
@@ -1976,12 +2483,22 @@ def clean_CI_arrays(xlower, xupper, ylower, yupper, plot_type="CDF"):
             ylower_out3 = np.append(ylower_out3, ylower_out2[i])
             yupper_out3 = np.append(yupper_out3, yupper_out2[i])
 
+    # checks whether CI_x or CI_y was specified and resulted in values being deleted due to being illegal values. Raises a more detailed error for the user.
+    if len(xlower_out3) != len(xlower) and x is not None:
+        raise ValueError(
+            "The confidence intervals for CI_x cannot be returned because they are NaN. This may occur when the SF=0. Try specifying CI_x values closer to the mean of the distribution."
+        )
+    if len(ylower_out3) != len(ylower) and q is not None:
+        raise ValueError(
+            "The confidence intervals for CI_y cannot be returned because they are NaN. This may occur when the CI_y is near 0 or 1. Try specifying CI_y values closer to 0.5."
+        )
+
     # final error check for lengths matching and there still being at least 2 elements remaining
     if (
         len(xlower_out3) != len(xupper_out3)
         or len(xlower_out3) != len(yupper_out3)
         or len(xlower_out3) != len(ylower_out3)
-        or len(xlower_out3) < 2
+        or len(xlower_out3) < 1
     ):
         colorprint(
             "ERROR in clean_CI_arrays: Confidence intervals could not be plotted due to the presence of too many NaNs in the arrays.",
@@ -1993,8 +2510,27 @@ def clean_CI_arrays(xlower, xupper, ylower, yupper, plot_type="CDF"):
 
 def fill_no_autoscale(xlower, xupper, ylower, yupper, **kwargs):
     """
-    creates a filled region (polygon) without adding it to the global list of autoscale objects.
-    Use this when you want to plot something but not have it considered when autoscale sets the range
+    Creates a filled region (polygon) without adding it to the global list of
+    autoscale objects. Use this function when you want to plot something but not
+    have it considered when autoscale sets the range.
+
+    Parameters
+    ----------
+    xlower : list, array
+        The lower x array for the polygon.
+    xupper : list, array
+        The upper x array for the polygon.
+    ylower : list, array
+        The lower y array for the polygon.
+    ylower : list, array
+        The upper y array for the polygon.
+    kwargs
+        keyword arguments passed to the matplotlib PolyCollection
+
+    Returns
+    -------
+    None
+        The filled polygon will be added to the plot.
     """
     # generate the polygon
     xstack = np.hstack([xlower, xupper[::-1]])
@@ -2013,8 +2549,23 @@ def fill_no_autoscale(xlower, xupper, ylower, yupper, **kwargs):
 
 def line_no_autoscale(x, y, **kwargs):
     """
-    creates a line without adding it to the global list of autoscale objects.
-    Use this when you want to plot something but not have it considered when autoscale sets the range
+    Creates a line without adding it to the global list of autoscale objects.
+    Use this when you want to plot something but not have it considered when
+    autoscale sets the range.
+
+    Parameters
+    ----------
+    x : array, list
+        The x values for the line
+    y : array, list
+        The y values for the line
+    kwargs
+        keyword arguments passed to the matplotlib LineCollection
+
+    Returns
+    -------
+    None
+        The line will be added to the plot.
     """
     # this is equivalent to plot as it makes a line
     line = np.column_stack([x, y])
@@ -2024,108 +2575,137 @@ def line_no_autoscale(x, y, **kwargs):
 
 class distribution_confidence_intervals:
     """
-    Contains functions that provide all the confidence intervals for CDF, SF, CHF for each distribution for which it is implemented
+    This class contains several subfunctions that provide all the confidence
+    intervals for CDF, SF, CHF for each distribution for which it is
+    implemented.
+
+    The class has no parameters or returns as it is used primarily to create the
+    confidence interval object which is used by the subfunctions.
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    None
     """
 
     @staticmethod
-    def CI_kwarg_handler(self, kwargs):
-        """
-        Processes specific arguments from kwargs and self to ensure the CI_type and plot_CI are extracted appropriately and passed to the confidence interval methods, without being passed to the plot method.
-        This function is used within each CDF, SF, CHF before the plt.plot method is used.
-        """
-        kwargs_list = kwargs.keys()
-        if "plot_CI" in kwargs_list:
-            plot_CI = kwargs.pop("plot_CI")
-        elif "show_CI" in kwargs_list:
-            plot_CI = kwargs.pop("show_CI")
-        else:
-            plot_CI = True  # default
-        if plot_CI not in [True, False]:
-            colorprint(
-                "WARNING: unexpected value in plot_CI. To show/hide the CI you can specify either show_CI=True/False or plot_CI=True/False",
-                text_color="red",
-            )
-            plot_CI = True
-
-        if "CI" in kwargs_list:
-            CI = kwargs.pop(
-                "CI"
-            )  # this allows CI in the CDF,SF,CHF to override CI from above (in the fitter)
-        elif self.Z is not None:
-            CI = 1 - ss.norm.cdf(-self.Z) * 2  # converts Z to CI
-        else:
-            CI = 0.95
-
-        if self.name == "Exponential":
-            if "CI_type" in kwargs_list:
-                colorprint(
-                    "WARNING: CI_type is not required for the Exponential distribution since the confidence intervals of time and reliability are identical",
-                    text_color="red",
-                )
-                CI_type = kwargs.pop("CI_type")  # remove it
-            else:
-                CI_type = (
-                    None  # this will not be used but it is required for the output
-                )
-        else:
-            # this allows CI_type in the CDF,SF,CHF to override CI_type from
-            # above (either the default of time if unspecified or whatever came
-            # from the probability plot)
-            if "CI_type" in kwargs_list:
-                CI_type = kwargs.pop("CI_type")
-            else:
-                CI_type = self.CI_type
-        return CI_type, plot_CI, CI
-
-    @staticmethod
     def exponential_CI(
-        self, func, plot_CI=None, CI=None, text_title="", color=None, q=None
+        self,
+        func="CDF",
+        plot_CI=None,
+        CI=None,
+        text_title="",
+        color=None,
+        q=None,
+        x=None,
     ):
         """
-        Generates the confidence intervals for CDF, SF, and CHF
-        This is a utility function intended only for use by the Exponential CDF, SF, and CHF functions.
+        Generates the confidence intervals for CDF, SF, and CHF of the
+        Exponential distribution.
+
+        Parameters
+        ----------
+        self : object
+            The distribution object
+        func : str
+            Must be either "CDF", "SF" or "CHF". Default is "CDF"
+        plot_CI : bool, None
+            The confidence intervals will only be plotted if plot_CI is True.
+        CI : float
+            The confidence interval. Must be between 0 and 1
+        text_title : str
+            The existing CDF/SF/CHF text title to which the confidence interval
+            string will be added.
+        color : str
+            The color to be used to fill the confidence intervals.
+        q : array, list, optional
+            The quantiles to be calculated. Default is None.
+        x : array, list, optional
+            The x-values to be calculated. Default is None.
+
+        Returns
+        -------
+        t_lower : array
+            The lower bounds on time. Only returned if q is not None.
+        t_upper :array
+            The upper bounds on time. Only returned if q is not None.
+        R_lower : array
+            The lower bounds on reliability. Only returned if x is not None.
+        R_upper :array
+            The upper bounds on reliability. Only returned if x is not None.
+
+        Notes
+        -----
+        self must contain particular values for this function to work. These
+        include self.Lambda_SE and self.Z.
+
+        As a Utils function, there is very limited error checking done, as this
+        function is not intended for users to access directly.
+
+        For the Exponential distribution, the bounds on time and reliability are
+        the same.
+
+        For an explaination of how the confidence inervals are calculated,
+        please see the `documentation <https://reliability.readthedocs.io/en/latest/How%20are%20the%20confidence%20intervals%20calculated.html>`_.
+
         """
         points = 200
-
-        if func not in ["CDF", "SF", "CHF"]:
-            raise ValueError("func must be either CDF, SF, or CHF")
-        if type(q) not in [list, np.ndarray, type(None)]:
-            raise ValueError("q must be a list or array of quantiles. Default is None")
-        if q is not None:
-            q = np.asarray(q)
 
         # this section plots the confidence interval
         if (
             self.Lambda_SE is not None
             and self.Z is not None
-            and (plot_CI is True or q is not None)
+            and (plot_CI is True or q is not None or x is not None)
         ):
 
-            CI_100 = round(
-                CI * 100, 4
-            )  # formats the confidence interval value ==> 0.95 becomes 95
+            if func not in ["CDF", "SF", "CHF"]:
+                raise ValueError("func must be either CDF, SF, or CHF")
+            if type(q) not in [list, np.ndarray, type(None)]:
+                raise ValueError(
+                    "q must be a list or array of quantiles. Default is None"
+                )
+            if type(x) not in [list, np.ndarray, type(None)]:
+                raise ValueError(
+                    "x must be a list or array of x-values. Default is None"
+                )
+            if q is not None:
+                q = np.asarray(q)
+            if x is not None:
+                x = np.asarray(x)
+
             Z = -ss.norm.ppf((1 - CI) / 2)  # converts CI to Z
-            if CI_100 % 1 == 0:
-                CI_100 = int(CI_100)  # removes decimals if the only decimal is 0
-            text_title = str(
-                text_title + "\n" + str(CI_100) + "% confidence bounds"
-            )  # Adds the CI and CI_type to the title
-            plt.title(
-                text_title
-            )  # add a line to the plot title to include the confidence bounds information
-            plt.subplots_adjust(top=0.81)
+
+            if plot_CI is True:
+                # formats the confidence interval value ==> 0.95 becomes 95
+                CI_100 = round(CI * 100, 4)
+
+                if CI_100 % 1 == 0:
+                    CI_100 = int(CI_100)  # removes decimals if the only decimal is 0
+                # Adds the CI and CI_type to the title
+                text_title = str(
+                    text_title + "\n" + str(CI_100) + "% confidence bounds"
+                )
+                # add a line to the plot title to include the confidence bounds information
+                plt.title(text_title)
+                plt.subplots_adjust(top=0.81)
 
             Lambda_upper = self.Lambda * (np.exp(Z * (self.Lambda_SE / self.Lambda)))
             Lambda_lower = self.Lambda * (np.exp(-Z * (self.Lambda_SE / self.Lambda)))
 
-            t0 = self.quantile(0.00001) - self.gamma
-            if t0 <= 0:
-                t0 = 0.0001
-            t = np.geomspace(
-                t0,
-                self.quantile(0.99999) - self.gamma,
-                points,
-            )
+            if x is not None:
+                t = x - self.gamma
+            else:
+                t0 = self.quantile(0.00001) - self.gamma
+                if t0 <= 0:
+                    t0 = 0.0001
+                t = np.geomspace(
+                    t0,
+                    self.quantile(0.99999) - self.gamma,
+                    points,
+                )
 
             # calculate the CIs using the formula for SF
             Y_lower = np.exp(-Lambda_lower * t)
@@ -2133,10 +2713,16 @@ class distribution_confidence_intervals:
 
             # clean the arrays of illegal values (<=0, nans, >=1 (if CDF or SF))
             t, t, Y_lower, Y_upper = clean_CI_arrays(
-                xlower=t, xupper=t, ylower=Y_lower, yupper=Y_upper, plot_type=func
+                xlower=t,
+                xupper=t,
+                ylower=Y_lower,
+                yupper=Y_upper,
+                plot_type=func,
+                q=q,
+                x=x,
             )
             # artificially correct for any reversals
-            if len(Y_lower) > 2 and len(Y_upper) > 2:
+            if (x is None or q is None) and len(Y_lower) > 2 and len(Y_upper) > 2:
                 Y_lower = no_reverse(Y_lower, CI_type=None, plot_type=func)
                 Y_upper = no_reverse(Y_upper, CI_type=None, plot_type=func)
 
@@ -2149,12 +2735,6 @@ class distribution_confidence_intervals:
             elif func == "CHF":
                 yy_upper = -np.log(Y_upper)  # same as -np.log(SF)
                 yy_lower = -np.log(Y_lower)
-
-            if (
-                q is not None
-            ):  # calculates the values for the table of percentiles in the fitter
-                t_lower = -np.log(q) / Lambda_upper + self.gamma
-                t_upper = -np.log(q) / Lambda_lower + self.gamma
 
             if plot_CI is True:
                 fill_no_autoscale(
@@ -2175,23 +2755,78 @@ class distribution_confidence_intervals:
                 # plt.scatter(t + self.gamma, yy_lower,color='blue',marker='.')
                 # plt.scatter(t + self.gamma, yy_upper, color='red', marker='.')
 
-            elif plot_CI is None and q is not None:
+            if q is not None:
+                t_lower = -np.log(q) / Lambda_upper + self.gamma
+                t_upper = -np.log(q) / Lambda_lower + self.gamma
                 return t_lower, t_upper
+            elif x is not None:
+                return Y_lower, Y_upper
 
     @staticmethod
     def weibull_CI(
         self,
-        func,
+        func="CDF",
         plot_CI=None,
         CI_type=None,
         CI=None,
         text_title="",
         color=None,
         q=None,
+        x=None,
     ):
         """
-        Generates the confidence intervals for CDF, SF, and CHF
-        This is a utility function intended only for use by the Weibull CDF, SF, and CHF functions.
+        Generates the confidence intervals for CDF, SF, and CHF of the
+        Weibull distribution.
+
+        Parameters
+        ----------
+        self : object
+            The distribution object
+        func : str
+            Must be either "CDF", "SF" or "CHF". Default is "CDF"
+        plot_CI : bool, None
+            The confidence intervals will only be plotted if plot_CI is True.
+        CI_type : str
+            Must be either "time" or "reliability"
+        CI : float
+            The confidence interval. Must be between 0 and 1
+        text_title : str
+            The existing CDF/SF/CHF text title to which the confidence interval
+            string will be added.
+        color : str
+            The color to be used to fill the confidence intervals.
+        q : array, list, optional
+            The quantiles to be calculated. Default is None. Only used if
+            CI_type='time'.
+        x : array, list, optional
+            The x-values to be calculated. Default is None. Only used if
+            CI_type='reliability'.
+
+        Returns
+        -------
+        t_lower : array
+            The lower bounds on time. Only returned if CI_type is "time" and q
+            is not None.
+        t_upper :array
+            The upper bounds on time. Only returned if CI_type is "time" and q
+            is not None.
+        R_lower : array
+            The lower bounds on reliability. Only returned if CI_type is
+            "reliability" and x is not None.
+        R_upper :array
+            The upper bounds on reliability. Only returned if CI_type is
+            "reliability" and x is not None.
+
+        Notes
+        -----
+        self must contain particular values for this function to work. These
+        include self.alpha_SE, self.beta_SE, self.Cov_alpha_beta, self.Z.
+
+        As a Utils function, there is very limited error checking done, as this
+        function is not intended for users to access directly.
+
+        For an explaination of how the confidence inervals are calculated,
+        please see the `documentation <https://reliability.readthedocs.io/en/latest/How%20are%20the%20confidence%20intervals%20calculated.html>`_.
         """
         points = 200  # the number of data points in each confidence interval (upper and lower) line
 
@@ -2199,7 +2834,7 @@ class distribution_confidence_intervals:
         if (
             validate_CI_params(self.alpha_SE, self.beta_SE, self.Cov_alpha_beta, self.Z)
             is True
-            and (plot_CI is True or q is not None)
+            and (plot_CI is True or q is not None or x is not None)
             and CI_type is not None
         ):
             if CI_type in ["time", "t", "T", "TIME", "Time"]:
@@ -2220,20 +2855,33 @@ class distribution_confidence_intervals:
                 raise ValueError(
                     "q must be a list or array of quantiles. Default is None"
                 )
+            if type(x) not in [list, np.ndarray, type(None)]:
+                raise ValueError(
+                    "x must be a list or array of x-values. Default is None"
+                )
             if q is not None:
                 q = np.asarray(q)
+            if x is not None:
+                x = np.asarray(x)
 
-            CI_100 = round(
-                CI * 100, 4
-            )  # formats the confidence interval value ==> 0.95 becomes 95
             Z = -ss.norm.ppf((1 - CI) / 2)  # converts CI to Z
-            if CI_100 % 1 == 0:
-                CI_100 = int(CI_100)  # removes decimals if the only decimal is 0
-            text_title = str(
-                text_title + "\n" + str(CI_100) + "% confidence bounds on " + CI_type
-            )  # Adds the CI and CI_type to the title
-            plt.title(text_title)
-            plt.subplots_adjust(top=0.81)
+
+            if plot_CI is True:
+                # formats the confidence interval value ==> 0.95 becomes 95
+                CI_100 = round(CI * 100, 4)
+                # removes decimals if the only decimal is 0
+                if CI_100 % 1 == 0:
+                    CI_100 = int(CI_100)
+                # Adds the CI and CI_type to the title
+                text_title = str(
+                    text_title
+                    + "\n"
+                    + str(CI_100)
+                    + "% confidence bounds on "
+                    + CI_type
+                )
+                plt.title(text_title)
+                plt.subplots_adjust(top=0.81)
 
             def u(t, alpha, beta):  # u = ln(-ln(R))
                 return beta * (anp.log(t) - anp.log(alpha))  # weibull SF linearized
@@ -2291,7 +2939,12 @@ class distribution_confidence_intervals:
 
                 # clean the arrays of illegal values (<=0, nans, >=1 (if CDF or SF))
                 t_lower, t_upper, Y, Y = clean_CI_arrays(
-                    xlower=t_lower, xupper=t_upper, ylower=Y, yupper=Y, plot_type=func
+                    xlower=t_lower,
+                    xupper=t_upper,
+                    ylower=Y,
+                    yupper=Y,
+                    plot_type=func,
+                    q=q,
                 )
                 # artificially correct for any reversals
                 if q is None and len(t_lower) > 2 and len(t_upper) > 2:
@@ -2315,6 +2968,7 @@ class distribution_confidence_intervals:
                         alpha=0.3,
                         linewidth=0,
                     )
+
                     line_no_autoscale(
                         x=t_lower, y=yy, color=color, linewidth=0
                     )  # these are invisible but need to be added to the plot for crosshairs() to find them
@@ -2323,19 +2977,23 @@ class distribution_confidence_intervals:
                     )  # still need to specify color otherwise the invisible CI lines will consume default colors
                     # plt.scatter(t_lower, yy, linewidth=1, color='blue')
                     # plt.scatter(t_upper, yy, linewidth=1, color='red')
-                elif plot_CI is None and q is not None:
+
+                if q is not None:
                     return t_lower, t_upper
 
             # Confidence bounds on Reliability (in terms of time)
             elif CI_type == "reliability":
-                t0 = self.quantile(0.00001) - self.gamma
-                if t0 <= 0:
-                    t0 = 0.0001
-                t = np.geomspace(
-                    t0,
-                    self.quantile(0.99999) - self.gamma,
-                    points,
-                )
+                if x is not None:
+                    t = x - self.gamma
+                else:
+                    t0 = self.quantile(0.00001) - self.gamma
+                    if t0 <= 0:
+                        t0 = 0.0001
+                    t = np.geomspace(
+                        t0,
+                        self.quantile(0.99999) - self.gamma,
+                        points,
+                    )
 
                 # u is reliability ln(-ln(R))
                 u_lower = (
@@ -2348,10 +3006,15 @@ class distribution_confidence_intervals:
 
                 # clean the arrays of illegal values (<=0, nans, >=1 (if CDF or SF))
                 t, t, Y_lower, Y_upper = clean_CI_arrays(
-                    xlower=t, xupper=t, ylower=Y_lower, yupper=Y_upper, plot_type=func
+                    xlower=t,
+                    xupper=t,
+                    ylower=Y_lower,
+                    yupper=Y_upper,
+                    plot_type=func,
+                    x=x,
                 )
                 # artificially correct for any reversals
-                if len(Y_lower) > 2 and len(Y_upper) > 2:
+                if x is None and len(Y_lower) > 2 and len(Y_upper) > 2:
                     Y_lower = no_reverse(Y_lower, CI_type=CI_type, plot_type=func)
                     Y_upper = no_reverse(Y_upper, CI_type=CI_type, plot_type=func)
 
@@ -2365,38 +3028,91 @@ class distribution_confidence_intervals:
                     yy_lower = -np.log(Y_lower)
                     yy_upper = -np.log(Y_upper)
 
-                fill_no_autoscale(
-                    xlower=t + self.gamma,
-                    xupper=t + self.gamma,
-                    ylower=yy_lower,
-                    yupper=yy_upper,
-                    color=color,
-                    alpha=0.3,
-                    linewidth=0,
-                )
-                line_no_autoscale(
-                    x=t + self.gamma, y=yy_lower, color=color, linewidth=0
-                )  # these are invisible but need to be added to the plot for crosshairs() to find them
-                line_no_autoscale(
-                    x=t + self.gamma, y=yy_upper, color=color, linewidth=0
-                )  # still need to specify color otherwise the invisible CI lines will consume default colors
-                # plt.scatter(t + self.gamma, yy_upper, color='red')
-                # plt.scatter(t + self.gamma, yy_lower, color='blue')
+                if plot_CI is True:
+                    fill_no_autoscale(
+                        xlower=t + self.gamma,
+                        xupper=t + self.gamma,
+                        ylower=yy_lower,
+                        yupper=yy_upper,
+                        color=color,
+                        alpha=0.3,
+                        linewidth=0,
+                    )
+                    line_no_autoscale(
+                        x=t + self.gamma, y=yy_lower, color=color, linewidth=0
+                    )  # these are invisible but need to be added to the plot for crosshairs() to find them
+                    line_no_autoscale(
+                        x=t + self.gamma, y=yy_upper, color=color, linewidth=0
+                    )  # still need to specify color otherwise the invisible CI lines will consume default colors
+                    # plt.scatter(t + self.gamma, yy_upper, color='red')
+                    # plt.scatter(t + self.gamma, yy_lower, color='blue')
+
+                if x is not None:
+                    return Y_lower, Y_upper
 
     @staticmethod
     def gamma_CI(
         self,
-        func,
+        func="CDF",
         plot_CI=None,
         CI_type=None,
         CI=None,
         text_title="",
         color=None,
         q=None,
+        x=None,
     ):
         """
-        Generates the confidence intervals for CDF, SF, and CHF
-        This is a utility function intended only for use by the Gamma CDF, SF, and CHF functions.
+        Generates the confidence intervals for CDF, SF, and CHF of the
+        Gamma distribution.
+
+        Parameters
+        ----------
+        self : object
+            The distribution object
+        func : str
+            Must be either "CDF", "SF" or "CHF". Default is "CDF".
+        plot_CI : bool, None
+            The confidence intervals will only be plotted if plot_CI is True.
+        CI_type : str
+            Must be either "time" or "reliability"
+        CI : float
+            The confidence interval. Must be between 0 and 1
+        text_title : str
+            The existing CDF/SF/CHF text title to which the confidence interval
+            string will be added.
+        color : str
+            The color to be used to fill the confidence intervals.
+        q : array, list, optional
+            The quantiles to be calculated. Default is None. Only used if CI_type='time'.
+        x : array, list, optional
+            The x-values to be calculated. Default is None. Only used if CI_type='reliability'.
+
+        Returns
+        -------
+        t_lower : array
+            The lower bounds on time. Only returned if CI_type is "time" and q
+            is not None.
+        t_upper :array
+            The upper bounds on time. Only returned if CI_type is "time" and q
+            is not None.
+        R_lower : array
+            The lower bounds on reliability. Only returned if CI_type is
+            "reliability" and x is not None.
+        R_upper :array
+            The upper bounds on reliability. Only returned if CI_type is
+            "reliability" and x is not None.
+
+        Notes
+        -----
+        self must contain particular values for this function to work. These
+        include self.mu_SE, self.beta_SE, self.Cov_mu_beta, self.Z.
+
+        As a Utils function, there is very limited error checking done, as this
+        function is not intended for users to access directly.
+
+        For an explaination of how the confidence inervals are calculated,
+        please see the `documentation <https://reliability.readthedocs.io/en/latest/How%20are%20the%20confidence%20intervals%20calculated.html>`_.
         """
         points = 200  # the number of data points in each confidence interval (upper and lower) line
 
@@ -2405,7 +3121,7 @@ class distribution_confidence_intervals:
         if (
             validate_CI_params(self.mu_SE, self.beta_SE, self.Cov_mu_beta, self.Z)
             is True
-            and (plot_CI is True or q is not None)
+            and (plot_CI is True or q is not None or x is not None)
             and CI_type is not None
         ):
             if CI_type in ["time", "t", "T", "TIME", "Time"]:
@@ -2426,20 +3142,33 @@ class distribution_confidence_intervals:
                 raise ValueError(
                     "q must be a list or array of quantiles. Default is None"
                 )
+            if type(x) not in [list, np.ndarray, type(None)]:
+                raise ValueError(
+                    "x must be a list or array of x-values. Default is None"
+                )
             if q is not None:
                 q = np.asarray(q)
+            if x is not None:
+                x = np.asarray(x)
 
-            CI_100 = round(
-                CI * 100, 4
-            )  # formats the confidence interval value ==> 0.95 becomes 95
             Z = -ss.norm.ppf((1 - CI) / 2)  # converts CI to Z
-            if CI_100 % 1 == 0:
-                CI_100 = int(CI_100)  # removes decimals if the only decimal is 0
-            text_title = str(
-                text_title + "\n" + str(CI_100) + "% confidence bounds on " + CI_type
-            )  # Adds the CI and CI_type to the title
-            plt.title(text_title)
-            plt.subplots_adjust(top=0.81)
+
+            if plot_CI is True:
+                # formats the confidence interval value ==> 0.95 becomes 95
+                CI_100 = round(CI * 100, 4)
+                # removes decimals if the only decimal is 0
+                if CI_100 % 1 == 0:
+                    CI_100 = int(CI_100)
+                # Adds the CI and CI_type to the title
+                text_title = str(
+                    text_title
+                    + "\n"
+                    + str(CI_100)
+                    + "% confidence bounds on "
+                    + CI_type
+                )
+                plt.title(text_title)
+                plt.subplots_adjust(top=0.81)
 
             def u(t, mu, beta):  # u = R
                 return agammaincc(beta, t / anp.exp(mu))
@@ -2502,7 +3231,12 @@ class distribution_confidence_intervals:
 
                 # clean the arrays of illegal values (<=0, nans, >=1 (if CDF or SF))
                 t_lower, t_upper, Y, Y = clean_CI_arrays(
-                    xlower=t_lower, xupper=t_upper, ylower=Y, yupper=Y, plot_type=func
+                    xlower=t_lower,
+                    xupper=t_upper,
+                    ylower=Y,
+                    yupper=Y,
+                    plot_type=func,
+                    q=q,
                 )
                 # artificially correct for any reversals
                 if q is None and len(t_lower) > 2 and len(t_upper) > 2:
@@ -2534,20 +3268,24 @@ class distribution_confidence_intervals:
                     )  # still need to specify color otherwise the invisible CI lines will consume default colors
                     # plt.scatter(t_lower, yy, linewidth=1, color='blue')
                     # plt.scatter(t_upper, yy, linewidth=1, color='red')
-                elif plot_CI is None and q is not None:
+
+                if q is not None:
                     return t_lower, t_upper
 
             # Confidence bounds on Reliability (in terms of time)
             elif CI_type == "reliability":
-                if self.gamma == 0:
-                    t0 = 0.0001
+                if x is not None:
+                    t = x - self.gamma
                 else:
-                    t0 = self.quantile(0.0000001)
-                t = np.linspace(
-                    t0 - self.gamma,
-                    self.quantile(0.99999) - self.gamma,
-                    points,
-                )
+                    if self.gamma == 0:
+                        t0 = 0.0001
+                    else:
+                        t0 = self.quantile(0.0000001)
+                    t = np.linspace(
+                        t0 - self.gamma,
+                        self.quantile(0.99999) - self.gamma,
+                        points,
+                    )
 
                 # u is reliability
                 # note that gamma is incorporated into u but not in var_u. This is the same as just shifting a Gamma_2P across
@@ -2562,10 +3300,15 @@ class distribution_confidence_intervals:
 
                 # clean the arrays of illegal values (<=0, nans, >=1 (if CDF or SF))
                 t, t, Y_lower, Y_upper = clean_CI_arrays(
-                    xlower=t, xupper=t, ylower=Y_lower, yupper=Y_upper, plot_type=func
+                    xlower=t,
+                    xupper=t,
+                    ylower=Y_lower,
+                    yupper=Y_upper,
+                    plot_type=func,
+                    x=x,
                 )
                 # artificially correct for any reversals
-                if len(Y_lower) > 2 and len(Y_upper) > 2:
+                if x is None and len(Y_lower) > 2 and len(Y_upper) > 2:
                     Y_lower = no_reverse(Y_lower, CI_type=CI_type, plot_type=func)
                     Y_upper = no_reverse(Y_upper, CI_type=CI_type, plot_type=func)
 
@@ -2579,39 +3322,91 @@ class distribution_confidence_intervals:
                     yy_lower = -np.log(Y_lower)
                     yy_upper = -np.log(Y_upper)
 
-                fill_no_autoscale(
-                    xlower=t + self.gamma,
-                    xupper=t + self.gamma,
-                    ylower=yy_lower,
-                    yupper=yy_upper,
-                    color=color,
-                    alpha=0.3,
-                    linewidth=0,
-                )
+                if plot_CI is True:
+                    fill_no_autoscale(
+                        xlower=t + self.gamma,
+                        xupper=t + self.gamma,
+                        ylower=yy_lower,
+                        yupper=yy_upper,
+                        color=color,
+                        alpha=0.3,
+                        linewidth=0,
+                    )
 
-                line_no_autoscale(
-                    x=t + self.gamma, y=yy_lower, color=color, linewidth=0
-                )  # these are invisible but need to be added to the plot for crosshairs() to find them
-                line_no_autoscale(
-                    x=t + self.gamma, y=yy_upper, color=color, linewidth=0
-                )  # still need to specify color otherwise the invisible CI lines will consume default colors
-                # plt.scatter(t + self.gamma, yy_upper, color='red')
-                # plt.scatter(t + self.gamma, yy_lower, color='blue')
+                    line_no_autoscale(
+                        x=t + self.gamma, y=yy_lower, color=color, linewidth=0
+                    )  # these are invisible but need to be added to the plot for crosshairs() to find them
+                    line_no_autoscale(
+                        x=t + self.gamma, y=yy_upper, color=color, linewidth=0
+                    )  # still need to specify color otherwise the invisible CI lines will consume default colors
+                    # plt.scatter(t + self.gamma, yy_upper, color='red')
+                    # plt.scatter(t + self.gamma, yy_lower, color='blue')
+                if x is not None:
+                    return Y_lower, Y_upper
 
     @staticmethod
     def normal_CI(
         self,
-        func,
+        func="CDF",
         plot_CI=None,
         CI_type=None,
         CI=None,
         text_title="",
         color=None,
         q=None,
+        x=None,
     ):
         """
-        Generates the confidence intervals for CDF, SF, and CHF
-        This is a utility function intended only for use by the Normal CDF, SF, and CHF functions.
+        Generates the confidence intervals for CDF, SF, and CHF of the
+        Normal distribution.
+
+        Parameters
+        ----------
+        self : object
+            The distribution object
+        func : str
+            Must be either "CDF", "SF" or "CHF". Default is "CDF".
+        plot_CI : bool, None
+            The confidence intervals will only be plotted if plot_CI is True.
+        CI_type : str
+            Must be either "time" or "reliability"
+        CI : float
+            The confidence interval. Must be between 0 and 1
+        text_title : str
+            The existing CDF/SF/CHF text title to which the confidence interval
+            string will be added.
+        color : str
+            The color to be used to fill the confidence intervals.
+        q : array, list, optional
+            The quantiles to be calculated. Default is None. Only used if CI_type='time'.
+        x : array, list, optional
+            The x-values to be calculated. Default is None. Only used if CI_type='reliability'.
+
+        Returns
+        -------
+        t_lower : array
+            The lower bounds on time. Only returned if CI_type is "time" and q
+            is not None.
+        t_upper :array
+            The upper bounds on time. Only returned if CI_type is "time" and q
+            is not None.
+        R_lower : array
+            The lower bounds on reliability. Only returned if CI_type is
+            "reliability" and x is not None.
+        R_upper :array
+            The upper bounds on reliability. Only returned if CI_type is
+            "reliability" and x is not None.
+
+        Notes
+        -----
+        self must contain particular values for this function to work. These
+        include self.mu_SE, self.sigma_SE, self.Cov_mu_sigma, self.Z.
+
+        As a Utils function, there is very limited error checking done, as this
+        function is not intended for users to access directly.
+
+        For an explaination of how the confidence inervals are calculated,
+        please see the `documentation <https://reliability.readthedocs.io/en/latest/How%20are%20the%20confidence%20intervals%20calculated.html>`_.
         """
         points = 200  # the number of data points in each confidence interval (upper and lower) line
 
@@ -2619,7 +3414,7 @@ class distribution_confidence_intervals:
         if (
             validate_CI_params(self.mu_SE, self.sigma_SE, self.Cov_mu_sigma, self.Z)
             is True
-            and (plot_CI is True or q is not None)
+            and (plot_CI is True or q is not None or x is not None)
             and CI_type is not None
         ):
             if CI_type in ["time", "t", "T", "TIME", "Time"]:
@@ -2640,20 +3435,33 @@ class distribution_confidence_intervals:
                 raise ValueError(
                     "q must be a list or array of quantiles. Default is None"
                 )
+            if type(x) not in [list, np.ndarray, type(None)]:
+                raise ValueError(
+                    "x must be a list or array of x-values. Default is None"
+                )
             if q is not None:
                 q = np.asarray(q)
+            if x is not None:
+                x = np.asarray(x)
 
-            CI_100 = round(
-                CI * 100, 4
-            )  # formats the confidence interval value ==> 0.95 becomes 95
             Z = -ss.norm.ppf((1 - CI) / 2)  # converts CI to Z
-            if CI_100 % 1 == 0:
-                CI_100 = int(CI_100)  # removes decimals if the only decimal is 0
-            text_title = str(
-                text_title + "\n" + str(CI_100) + "% confidence bounds on " + CI_type
-            )  # Adds the CI and CI_type to the title
-            plt.title(text_title)
-            plt.subplots_adjust(top=0.81)
+
+            if plot_CI is True:
+                # formats the confidence interval value ==> 0.95 becomes 95
+                CI_100 = round(CI * 100, 4)
+                # removes decimals if the only decimal is 0
+                if CI_100 % 1 == 0:
+                    CI_100 = int(CI_100)
+                # Adds the CI and CI_type to the title
+                text_title = str(
+                    text_title
+                    + "\n"
+                    + str(CI_100)
+                    + "% confidence bounds on "
+                    + CI_type
+                )
+                plt.title(text_title)
+                plt.subplots_adjust(top=0.81)
 
             def u(t, mu, sigma):  # u = phiinv(R)
                 return (mu - t) / sigma  # normal SF linearlized
@@ -2687,7 +3495,8 @@ class distribution_confidence_intervals:
                     * self.Cov_mu_sigma
                 )
 
-            if CI_type == "time":  # Confidence bounds on time (in terms of reliability)
+            # Confidence bounds on time (in terms of reliability)
+            if CI_type == "time":
                 # Y is reliability (R)
                 if func == "CHF":
                     chf_array = np.geomspace(1e-8, self._chf[-1] * 1.5, points)
@@ -2706,7 +3515,12 @@ class distribution_confidence_intervals:
 
                 # clean the arrays of illegal values (<=0, nans, >=1 (if CDF or SF))
                 t_lower, t_upper, Y, Y = clean_CI_arrays(
-                    xlower=t_lower, xupper=t_upper, ylower=Y, yupper=Y, plot_type=func
+                    xlower=t_lower,
+                    xupper=t_upper,
+                    ylower=Y,
+                    yupper=Y,
+                    plot_type=func,
+                    q=q,
                 )
                 # artificially correct for any reversals
                 if q is None and len(t_lower) > 2 and len(t_upper) > 2:
@@ -2738,13 +3552,18 @@ class distribution_confidence_intervals:
                     )  # still need to specify color otherwise the invisible CI lines will consume default colors
                     # plt.scatter(t_lower, yy, linewidth=1, color='blue')
                     # plt.scatter(t_upper, yy, linewidth=1, color='red')
-                elif plot_CI is None and q is not None:
+
+                if q is not None:
                     return t_lower, t_upper
 
-            elif (
-                CI_type == "reliability"
-            ):  # Confidence bounds on Reliability (in terms of time)
-                t = np.linspace(self.quantile(0.00001), self.quantile(0.99999), points)
+            # Confidence bounds on Reliability (in terms of time)
+            elif CI_type == "reliability":
+                if x is not None:
+                    t = x
+                else:
+                    t = np.linspace(
+                        self.quantile(0.00001), self.quantile(0.99999), points
+                    )
 
                 # u is reliability u = phiinv(R)
                 u_lower = u(t, self.mu, self.sigma) + Z * var_u(self, t) ** 0.5
@@ -2755,10 +3574,15 @@ class distribution_confidence_intervals:
 
                 # clean the arrays of illegal values (<=0, nans, >=1 (if CDF or SF))
                 t, t, Y_lower, Y_upper = clean_CI_arrays(
-                    xlower=t, xupper=t, ylower=Y_lower, yupper=Y_upper, plot_type=func
+                    xlower=t,
+                    xupper=t,
+                    ylower=Y_lower,
+                    yupper=Y_upper,
+                    plot_type=func,
+                    x=x,
                 )
                 # artificially correct for any reversals
-                if len(Y_lower) > 2 and len(Y_upper) > 2:
+                if x is None and len(Y_lower) > 2 and len(Y_upper) > 2:
                     Y_lower = no_reverse(Y_lower, CI_type=CI_type, plot_type=func)
                     Y_upper = no_reverse(Y_upper, CI_type=CI_type, plot_type=func)
 
@@ -2772,38 +3596,91 @@ class distribution_confidence_intervals:
                     yy_lower = -np.log(Y_lower)
                     yy_upper = -np.log(Y_upper)
 
-                fill_no_autoscale(
-                    xlower=t,
-                    xupper=t,
-                    ylower=yy_lower,
-                    yupper=yy_upper,
-                    color=color,
-                    alpha=0.3,
-                    linewidth=0,
-                )
-                line_no_autoscale(
-                    x=t, y=yy_lower, color=color, linewidth=0
-                )  # these are invisible but need to be added to the plot for crosshairs() to find them
-                line_no_autoscale(
-                    x=t, y=yy_upper, color=color, linewidth=0
-                )  # still need to specify color otherwise the invisible CI lines will consume default colors
-                # plt.scatter(t, yy_upper, color='red')
-                # plt.scatter(t, yy_lower, color='blue')
+                if plot_CI is True:
+                    fill_no_autoscale(
+                        xlower=t,
+                        xupper=t,
+                        ylower=yy_lower,
+                        yupper=yy_upper,
+                        color=color,
+                        alpha=0.3,
+                        linewidth=0,
+                    )
+                    line_no_autoscale(
+                        x=t, y=yy_lower, color=color, linewidth=0
+                    )  # these are invisible but need to be added to the plot for crosshairs() to find them
+                    line_no_autoscale(
+                        x=t, y=yy_upper, color=color, linewidth=0
+                    )  # still need to specify color otherwise the invisible CI lines will consume default colors
+                    # plt.scatter(t, yy_upper, color='red')
+                    # plt.scatter(t, yy_lower, color='blue')
+
+                if x is not None:
+                    return Y_lower, Y_upper
 
     @staticmethod
     def lognormal_CI(
         self,
-        func,
+        func="CDF",
         plot_CI=None,
         CI_type=None,
         CI=None,
         text_title="",
         color=None,
         q=None,
+        x=None,
     ):
         """
-        Generates the confidence intervals for CDF, SF, and CHF
-        This is a utility function intended only for use by the Lognormal CDF, SF, and CHF functions.
+        Generates the confidence intervals for CDF, SF, and CHF of the
+        Lognormal distribution.
+
+        Parameters
+        ----------
+        self : object
+            The distribution object
+        func : str
+            Must be either "CDF", "SF" or "CHF". Default is "CDF".
+        plot_CI : bool, None
+            The confidence intervals will only be plotted if plot_CI is True.
+        CI_type : str
+            Must be either "time" or "reliability"
+        CI : float
+            The confidence interval. Must be between 0 and 1
+        text_title : str
+            The existing CDF/SF/CHF text title to which the confidence interval
+            string will be added.
+        color : str
+            The color to be used to fill the confidence intervals.
+        q : array, list, optional
+            The quantiles to be calculated. Default is None. Only used if CI_type='time'.
+        x : array, list, optional
+            The x-values to be calculated. Default is None. Only used if CI_type='reliability'.
+
+        Returns
+        -------
+        t_lower : array
+            The lower bounds on time. Only returned if CI_type is "time" and q
+            is not None.
+        t_upper :array
+            The upper bounds on time. Only returned if CI_type is "time" and q
+            is not None.
+        R_lower : array
+            The lower bounds on reliability. Only returned if CI_type is
+            "reliability" and x is not None.
+        R_upper :array
+            The upper bounds on reliability. Only returned if CI_type is
+            "reliability" and x is not None.
+
+        Notes
+        -----
+        self must contain particular values for this function to work. These
+        include self.mu_SE, self.sigma_SE, self.Cov_mu_sigma, self.Z.
+
+        As a Utils function, there is very limited error checking done, as this
+        function is not intended for users to access directly.
+
+        For an explaination of how the confidence inervals are calculated,
+        please see the `documentation <https://reliability.readthedocs.io/en/latest/How%20are%20the%20confidence%20intervals%20calculated.html>`_.
         """
         points = 200  # the number of data points in each confidence interval (upper and lower) line
 
@@ -2811,7 +3688,7 @@ class distribution_confidence_intervals:
         if (
             validate_CI_params(self.mu_SE, self.sigma_SE, self.Cov_mu_sigma, self.Z)
             is True
-            and (plot_CI is True or q is not None)
+            and (plot_CI is True or q is not None or x is not None)
             and CI_type is not None
         ):
             if CI_type in ["time", "t", "T", "TIME", "Time"]:
@@ -2832,20 +3709,34 @@ class distribution_confidence_intervals:
                 raise ValueError(
                     "q must be a list or array of quantiles. Default is None"
                 )
+            if type(x) not in [list, np.ndarray, type(None)]:
+                raise ValueError(
+                    "x must be a list or array of x-values. Default is None"
+                )
+
             if q is not None:
                 q = np.asarray(q)
+            if x is not None:
+                x = np.asarray(x)
 
-            CI_100 = round(
-                CI * 100, 4
-            )  # formats the confidence interval value ==> 0.95 becomes 95
             Z = -ss.norm.ppf((1 - CI) / 2)  # converts CI to Z
-            if CI_100 % 1 == 0:
-                CI_100 = int(CI_100)  # removes decimals if the only decimal is 0
-            text_title = str(
-                text_title + "\n" + str(CI_100) + "% confidence bounds on " + CI_type
-            )  # Adds the CI and CI_type to the title
-            plt.title(text_title)
-            plt.subplots_adjust(top=0.81)
+
+            if plot_CI is True:
+                # formats the confidence interval value ==> 0.95 becomes 95
+                CI_100 = round(CI * 100, 4)
+                # removes decimals if the only decimal is 0
+                if CI_100 % 1 == 0:
+                    CI_100 = int(CI_100)
+                # Adds the CI and CI_type to the title
+                text_title = str(
+                    text_title
+                    + "\n"
+                    + str(CI_100)
+                    + "% confidence bounds on "
+                    + CI_type
+                )
+                plt.title(text_title)
+                plt.subplots_adjust(top=0.81)
 
             def u(t, mu, sigma):  # u = phiinv(R)
                 return (mu - np.log(t)) / sigma  # lognormal SF linearlized
@@ -2879,7 +3770,8 @@ class distribution_confidence_intervals:
                     * self.Cov_mu_sigma
                 )
 
-            if CI_type == "time":  # Confidence bounds on time (in terms of reliability)
+            if CI_type == "time":
+                # Confidence bounds on time (in terms of reliability)
                 # Y is reliability (R)
                 if func == "CHF":
                     chf_array = np.geomspace(1e-8, self._chf[-1] * 1.5, points)
@@ -2901,7 +3793,12 @@ class distribution_confidence_intervals:
 
                 # clean the arrays of illegal values (<=0, nans, >=1 (if CDF or SF))
                 t_lower, t_upper, Y, Y = clean_CI_arrays(
-                    xlower=t_lower, xupper=t_upper, ylower=Y, yupper=Y, plot_type=func
+                    xlower=t_lower,
+                    xupper=t_upper,
+                    ylower=Y,
+                    yupper=Y,
+                    plot_type=func,
+                    q=q,
                 )
                 # artificially correct for any reversals
                 if q is None and len(t_lower) > 2 and len(t_upper) > 2:
@@ -2933,20 +3830,23 @@ class distribution_confidence_intervals:
                     )  # still need to specify color otherwise the invisible CI lines will consume default colors
                     # plt.scatter(t_lower, yy, linewidth=1, color='blue')
                     # plt.scatter(t_upper, yy, linewidth=1, color='red')
-                elif plot_CI is None and q is not None:
+
+                if q is not None:
                     return t_lower, t_upper
 
-            elif (
-                CI_type == "reliability"
-            ):  # Confidence bounds on Reliability (in terms of time)
-                t0 = self.quantile(0.00001) - self.gamma
-                if t0 <= 0:
-                    t0 = 0.0001
-                t = np.geomspace(
-                    t0,
-                    self.quantile(0.99999) - self.gamma,
-                    points,
-                )
+            elif CI_type == "reliability":
+                # Confidence bounds on Reliability (in terms of time)
+                if x is not None:
+                    t = x - self.gamma
+                else:
+                    t0 = self.quantile(0.00001) - self.gamma
+                    if t0 <= 0:
+                        t0 = 0.0001
+                    t = np.geomspace(
+                        t0,
+                        self.quantile(0.99999) - self.gamma,
+                        points,
+                    )
 
                 # u is reliability u = phiinv(R)
                 u_lower = u(t, self.mu, self.sigma) + Z * var_u(self, t) ** 0.5
@@ -2957,10 +3857,15 @@ class distribution_confidence_intervals:
 
                 # clean the arrays of illegal values (<=0, nans, >=1 (if CDF or SF))
                 t, t, Y_lower, Y_upper = clean_CI_arrays(
-                    xlower=t, xupper=t, ylower=Y_lower, yupper=Y_upper, plot_type=func
+                    xlower=t,
+                    xupper=t,
+                    ylower=Y_lower,
+                    yupper=Y_upper,
+                    plot_type=func,
+                    x=x,
                 )
                 # artificially correct for any reversals
-                if len(Y_lower) > 2 and len(Y_upper) > 2:
+                if x is None and len(Y_lower) > 2 and len(Y_upper) > 2:
                     Y_lower = no_reverse(Y_lower, CI_type=CI_type, plot_type=func)
                     Y_upper = no_reverse(Y_upper, CI_type=CI_type, plot_type=func)
 
@@ -2974,38 +3879,91 @@ class distribution_confidence_intervals:
                     yy_lower = -np.log(Y_lower)
                     yy_upper = -np.log(Y_upper)
 
-                fill_no_autoscale(
-                    xlower=t + self.gamma,
-                    xupper=t + self.gamma,
-                    ylower=yy_lower,
-                    yupper=yy_upper,
-                    color=color,
-                    alpha=0.3,
-                    linewidth=0,
-                )
-                line_no_autoscale(
-                    x=t + self.gamma, y=yy_lower, color=color, linewidth=0
-                )  # these are invisible but need to be added to the plot for crosshairs() to find them
-                line_no_autoscale(
-                    x=t + self.gamma, y=yy_upper, color=color, linewidth=0
-                )  # still need to specify color otherwise the invisible CI lines will consume default colors
-                # plt.scatter(t+ self.gamma, yy_upper, color='red')
-                # plt.scatter(t+ self.gamma, yy_lower, color='blue')
+                if plot_CI is True:
+                    fill_no_autoscale(
+                        xlower=t + self.gamma,
+                        xupper=t + self.gamma,
+                        ylower=yy_lower,
+                        yupper=yy_upper,
+                        color=color,
+                        alpha=0.3,
+                        linewidth=0,
+                    )
+                    line_no_autoscale(
+                        x=t + self.gamma, y=yy_lower, color=color, linewidth=0
+                    )  # these are invisible but need to be added to the plot for crosshairs() to find them
+                    line_no_autoscale(
+                        x=t + self.gamma, y=yy_upper, color=color, linewidth=0
+                    )  # still need to specify color otherwise the invisible CI lines will consume default colors
+                    # plt.scatter(t+ self.gamma, yy_upper, color='red')
+                    # plt.scatter(t+ self.gamma, yy_lower, color='blue')
+
+                if x is not None:
+                    return Y_lower, Y_upper
 
     @staticmethod
     def loglogistic_CI(
         self,
-        func,
+        func="CDF",
         plot_CI=None,
         CI_type=None,
         CI=None,
         text_title="",
         color=None,
         q=None,
+        x=None,
     ):
         """
-        Generates the confidence intervals for CDF, SF, and CHF
-        This is a utility function intended only for use by the Loglogistic CDF, SF, and CHF functions.
+        Generates the confidence intervals for CDF, SF, and CHF of the
+        Loglogistic distribution.
+
+        Parameters
+        ----------
+        self : object
+            The distribution object
+        func : str
+            Must be either "CDF", "SF" or "CHF". Default is "CDF".
+        plot_CI : bool, None
+            The confidence intervals will only be plotted if plot_CI is True.
+        CI_type : str
+            Must be either "time" or "reliability"
+        CI : float
+            The confidence interval. Must be between 0 and 1
+        text_title : str
+            The existing CDF/SF/CHF text title to which the confidence interval
+            string will be added.
+        color : str
+            The color to be used to fill the confidence intervals.
+        q : array, list, optional
+            The quantiles to be calculated. Default is None. Only used if CI_type='time'.
+        x : array, list, optional
+            The x-values to be calculated. Default is None. Only used if CI_type='reliability'.
+
+        Returns
+        -------
+        t_lower : array
+            The lower bounds on time. Only returned if CI_type is "time" and q
+            is not None.
+        t_upper :array
+            The upper bounds on time. Only returned if CI_type is "time" and q
+            is not None.
+        R_lower : array
+            The lower bounds on reliability. Only returned if CI_type is
+            "reliability" and x is not None.
+        R_upper :array
+            The upper bounds on reliability. Only returned if CI_type is
+            "reliability" and x is not None.
+
+        Notes
+        -----
+        self must contain particular values for this function to work. These
+        include self.alpha_SE, self.beta_SE, self.Cov_alpha_beta, self.Z.
+
+        As a Utils function, there is very limited error checking done, as this
+        function is not intended for users to access directly.
+
+        For an explaination of how the confidence inervals are calculated,
+        please see the `documentation <https://reliability.readthedocs.io/en/latest/How%20are%20the%20confidence%20intervals%20calculated.html>`_.
         """
         points = 200  # the number of data points in each confidence interval (upper and lower) line
 
@@ -3013,7 +3971,7 @@ class distribution_confidence_intervals:
         if (
             validate_CI_params(self.alpha_SE, self.beta_SE, self.Cov_alpha_beta, self.Z)
             is True
-            and (plot_CI is True or q is not None)
+            and (plot_CI is True or q is not None or x is not None)
             and CI_type is not None
         ):
             if CI_type in ["time", "t", "T", "TIME", "Time"]:
@@ -3034,20 +3992,33 @@ class distribution_confidence_intervals:
                 raise ValueError(
                     "q must be a list or array of quantiles. Default is None"
                 )
+            if type(x) not in [list, np.ndarray, type(None)]:
+                raise ValueError(
+                    "x must be a list or array of x-values. Default is None"
+                )
             if q is not None:
                 q = np.asarray(q)
+            if x is not None:
+                x = np.asarray(x)
 
-            CI_100 = round(
-                CI * 100, 4
-            )  # formats the confidence interval value ==> 0.95 becomes 95
             Z = -ss.norm.ppf((1 - CI) / 2)  # converts CI to Z
-            if CI_100 % 1 == 0:
-                CI_100 = int(CI_100)  # removes decimals if the only decimal is 0
-            text_title = str(
-                text_title + "\n" + str(CI_100) + "% confidence bounds on " + CI_type
-            )  # Adds the CI and CI_type to the title
-            plt.title(text_title)
-            plt.subplots_adjust(top=0.81)
+
+            if plot_CI is True:
+                # formats the confidence interval value ==> 0.95 becomes 95
+                CI_100 = round(CI * 100, 4)
+                # removes decimals if the only decimal is 0
+                if CI_100 % 1 == 0:
+                    CI_100 = int(CI_100)
+                # Adds the CI and CI_type to the title
+                text_title = str(
+                    text_title
+                    + "\n"
+                    + str(CI_100)
+                    + "% confidence bounds on "
+                    + CI_type
+                )
+                plt.title(text_title)
+                plt.subplots_adjust(top=0.81)
 
             def u(t, alpha, beta):  # u = ln(1/R - 1)
                 return beta * (anp.log(t) - anp.log(alpha))  # loglogistic SF linearized
@@ -3104,7 +4075,12 @@ class distribution_confidence_intervals:
 
                 # clean the arrays of illegal values (<=0, nans, >=1 (if CDF or SF))
                 t_lower, t_upper, Y, Y = clean_CI_arrays(
-                    xlower=t_lower, xupper=t_upper, ylower=Y, yupper=Y, plot_type=func
+                    xlower=t_lower,
+                    xupper=t_upper,
+                    ylower=Y,
+                    yupper=Y,
+                    plot_type=func,
+                    q=q,
                 )
                 # artificially correct for any reversals
                 if q is None and len(t_lower) > 2 and len(t_upper) > 2:
@@ -3136,20 +4112,24 @@ class distribution_confidence_intervals:
                     )  # still need to specify color otherwise the invisible CI lines will consume default colors
                     # plt.scatter(t_lower, yy, linewidth=1, color='blue')
                     # plt.scatter(t_upper, yy, linewidth=1, color='red')
-                elif plot_CI is None and q is not None:
+
+                if q is not None:
                     return t_lower, t_upper
 
             elif (
                 CI_type == "reliability"
             ):  # Confidence bounds on Reliability (in terms of time)
-                t0 = self.quantile(0.00001) - self.gamma
-                if t0 <= 0:
-                    t0 = 0.0001
-                t = np.geomspace(
-                    t0,
-                    self.quantile(0.99999) - self.gamma,
-                    points,
-                )
+                if x is not None:
+                    t = x - self.gamma
+                else:
+                    t0 = self.quantile(0.00001) - self.gamma
+                    if t0 <= 0:
+                        t0 = 0.0001
+                    t = np.geomspace(
+                        t0,
+                        self.quantile(0.99999) - self.gamma,
+                        points,
+                    )
 
                 # u is reliability ln(1/R - 1)
                 u_lower = (
@@ -3162,10 +4142,15 @@ class distribution_confidence_intervals:
 
                 # clean the arrays of illegal values (<=0, nans, >=1 (if CDF or SF))
                 t, t, Y_lower, Y_upper = clean_CI_arrays(
-                    xlower=t, xupper=t, ylower=Y_lower, yupper=Y_upper, plot_type=func
+                    xlower=t,
+                    xupper=t,
+                    ylower=Y_lower,
+                    yupper=Y_upper,
+                    plot_type=func,
+                    x=x,
                 )
                 # artificially correct for any reversals
-                if len(Y_lower) > 2 and len(Y_upper) > 2:
+                if x is None and len(Y_lower) > 2 and len(Y_upper) > 2:
                     Y_lower = no_reverse(Y_lower, CI_type=CI_type, plot_type=func)
                     Y_upper = no_reverse(Y_upper, CI_type=CI_type, plot_type=func)
 
@@ -3179,38 +4164,90 @@ class distribution_confidence_intervals:
                     yy_lower = -np.log(Y_lower)
                     yy_upper = -np.log(Y_upper)
 
-                fill_no_autoscale(
-                    xlower=t + self.gamma,
-                    xupper=t + self.gamma,
-                    ylower=yy_lower,
-                    yupper=yy_upper,
-                    color=color,
-                    alpha=0.3,
-                    linewidth=0,
-                )
-                line_no_autoscale(
-                    x=t + self.gamma, y=yy_lower, color=color, linewidth=0
-                )  # these are invisible but need to be added to the plot for crosshairs() to find them
-                line_no_autoscale(
-                    x=t + self.gamma, y=yy_upper, color=color, linewidth=0
-                )  # still need to specify color otherwise the invisible CI lines will consume default colors
-                # plt.scatter(t + self.gamma, yy_upper, color='red')
-                # plt.scatter(t + self.gamma, yy_lower, color='blue')
+                if plot_CI is True:
+                    fill_no_autoscale(
+                        xlower=t + self.gamma,
+                        xupper=t + self.gamma,
+                        ylower=yy_lower,
+                        yupper=yy_upper,
+                        color=color,
+                        alpha=0.3,
+                        linewidth=0,
+                    )
+                    line_no_autoscale(
+                        x=t + self.gamma, y=yy_lower, color=color, linewidth=0
+                    )  # these are invisible but need to be added to the plot for crosshairs() to find them
+                    line_no_autoscale(
+                        x=t + self.gamma, y=yy_upper, color=color, linewidth=0
+                    )  # still need to specify color otherwise the invisible CI lines will consume default colors
+                    # plt.scatter(t + self.gamma, yy_upper, color='red')
+                    # plt.scatter(t + self.gamma, yy_lower, color='blue')
+                if x is not None:
+                    return Y_lower, Y_upper
 
     @staticmethod
     def gumbel_CI(
         self,
-        func,
+        func="CDF",
         plot_CI=None,
         CI_type=None,
         CI=None,
         text_title="",
         color=None,
         q=None,
+        x=None,
     ):
         """
-        Generates the confidence intervals for CDF, SF, and CHF
-        This is a utility function intended only for use by the Gumbel CDF, SF, and CHF functions.
+        Generates the confidence intervals for CDF, SF, and CHF of the
+        Gumbel distribution.
+
+        Parameters
+        ----------
+        self : object
+            The distribution object
+        func : str
+            Must be either "CDF", "SF" or "CHF". Default is "CDF".
+        plot_CI : bool, None
+            The confidence intervals will only be plotted if plot_CI is True.
+        CI_type : str
+            Must be either "time" or "reliability"
+        CI : float
+            The confidence interval. Must be between 0 and 1
+        text_title : str
+            The existing CDF/SF/CHF text title to which the confidence interval
+            string will be added.
+        color : str
+            The color to be used to fill the confidence intervals.
+        q : array, list, optional
+            The quantiles to be calculated. Default is None. Only used if CI_type='time'.
+        x : array, list, optional
+            The x-values to be calculated. Default is None. Only used if CI_type='reliability'.
+
+        Returns
+        -------
+        t_lower : array
+            The lower bounds on time. Only returned if CI_type is "time" and q
+            is not None.
+        t_upper :array
+            The upper bounds on time. Only returned if CI_type is "time" and q
+            is not None.
+        R_lower : array
+            The lower bounds on reliability. Only returned if CI_type is
+            "reliability" and x is not None.
+        R_upper :array
+            The upper bounds on reliability. Only returned if CI_type is
+            "reliability" and x is not None.
+
+        Notes
+        -----
+        self must contain particular values for this function to work. These
+        include self.mu_SE, self.sigma_SE, self.Cov_mu_sigma, self.Z.
+
+        As a Utils function, there is very limited error checking done, as this
+        function is not intended for users to access directly.
+
+        For an explaination of how the confidence inervals are calculated,
+        please see the `documentation <https://reliability.readthedocs.io/en/latest/How%20are%20the%20confidence%20intervals%20calculated.html>`_.
         """
         points = 200  # the number of data points in each confidence interval (upper and lower) line
 
@@ -3218,7 +4255,7 @@ class distribution_confidence_intervals:
         if (
             validate_CI_params(self.mu_SE, self.sigma_SE, self.Cov_mu_sigma, self.Z)
             is True
-            and (plot_CI is True or q is not None)
+            and (plot_CI is True or q is not None or x is not None)
             and CI_type is not None
         ):
             if CI_type in ["time", "t", "T", "TIME", "Time"]:
@@ -3239,20 +4276,33 @@ class distribution_confidence_intervals:
                 raise ValueError(
                     "q must be a list or array of quantiles. Default is None"
                 )
+            if type(x) not in [list, np.ndarray, type(None)]:
+                raise ValueError(
+                    "x must be a list or array of x-values. Default is None"
+                )
             if q is not None:
                 q = np.asarray(q)
+            if x is not None:
+                x = np.asarray(x)
 
-            CI_100 = round(
-                CI * 100, 4
-            )  # formats the confidence interval value ==> 0.95 becomes 95
             Z = -ss.norm.ppf((1 - CI) / 2)  # converts CI to Z
-            if CI_100 % 1 == 0:
-                CI_100 = int(CI_100)  # removes decimals if the only decimal is 0
-            text_title = str(
-                text_title + "\n" + str(CI_100) + "% confidence bounds on " + CI_type
-            )  # Adds the CI and CI_type to the title
-            plt.title(text_title)
-            plt.subplots_adjust(top=0.81)
+
+            if plot_CI is True:
+                # formats the confidence interval value ==> 0.95 becomes 95
+                CI_100 = round(CI * 100, 4)
+                # removes decimals if the only decimal is 0
+                if CI_100 % 1 == 0:
+                    CI_100 = int(CI_100)
+                # Adds the CI and CI_type to the title
+                text_title = str(
+                    text_title
+                    + "\n"
+                    + str(CI_100)
+                    + "% confidence bounds on "
+                    + CI_type
+                )
+                plt.title(text_title)
+                plt.subplots_adjust(top=0.81)
 
             def u(t, mu, sigma):  # u = ln(-ln(R))
                 return (t - mu) / sigma  # gumbel SF linearlized
@@ -3305,7 +4355,12 @@ class distribution_confidence_intervals:
 
                 # clean the arrays of illegal values (<=0, nans, >=1 (if CDF or SF))
                 t_lower, t_upper, Y, Y = clean_CI_arrays(
-                    xlower=t_lower, xupper=t_upper, ylower=Y, yupper=Y, plot_type=func
+                    xlower=t_lower,
+                    xupper=t_upper,
+                    ylower=Y,
+                    yupper=Y,
+                    plot_type=func,
+                    q=q,
                 )
                 # artificially correct for any reversals
                 if q is None and len(t_lower) > 2 and len(t_upper) > 2:
@@ -3337,13 +4392,19 @@ class distribution_confidence_intervals:
                     )  # still need to specify color otherwise the invisible CI lines will consume default colors
                     # plt.scatter(t_lower, yy, linewidth=1, color='blue')
                     # plt.scatter(t_upper, yy, linewidth=1, color='red')
-                elif plot_CI is None and q is not None:
+
+                if q is not None:
                     return t_lower, t_upper
 
             elif (
                 CI_type == "reliability"
             ):  # Confidence bounds on Reliability (in terms of time)
-                t = np.linspace(self.quantile(0.00001), self.quantile(0.99999), points)
+                if x is not None:
+                    t = x
+                else:
+                    t = np.linspace(
+                        self.quantile(0.00001), self.quantile(0.99999), points
+                    )
 
                 # u is reliability u = ln(-ln(R))
                 u_lower = u(t, self.mu, self.sigma) + Z * var_u(self, t) ** 0.5
@@ -3354,10 +4415,15 @@ class distribution_confidence_intervals:
 
                 # clean the arrays of illegal values (<=0, nans, >=1 (if CDF or SF))
                 t, t, Y_lower, Y_upper = clean_CI_arrays(
-                    xlower=t, xupper=t, ylower=Y_lower, yupper=Y_upper, plot_type=func
+                    xlower=t,
+                    xupper=t,
+                    ylower=Y_lower,
+                    yupper=Y_upper,
+                    plot_type=func,
+                    x=x,
                 )
                 # artificially correct for any reversals
-                if len(Y_lower) > 2 and len(Y_upper) > 2:
+                if x is None and len(Y_lower) > 2 and len(Y_upper) > 2:
                     Y_lower = no_reverse(Y_lower, CI_type=CI_type, plot_type=func)
                     Y_upper = no_reverse(Y_upper, CI_type=CI_type, plot_type=func)
 
@@ -3371,233 +4437,26 @@ class distribution_confidence_intervals:
                     yy_lower = -np.log(Y_lower)
                     yy_upper = -np.log(Y_upper)
 
-                fill_no_autoscale(
-                    xlower=t,
-                    xupper=t,
-                    ylower=yy_lower,
-                    yupper=yy_upper,
-                    color=color,
-                    alpha=0.3,
-                    linewidth=0,
-                )
-                line_no_autoscale(
-                    x=t, y=yy_lower, color=color, linewidth=0
-                )  # these are invisible but need to be added to the plot for crosshairs() to find them
-                line_no_autoscale(
-                    x=t, y=yy_upper, color=color, linewidth=0
-                )  # still need to specify color otherwise the invisible CI lines will consume default colors
-                # plt.scatter(t, yy_upper, color='red')
-                # plt.scatter(t, yy_lower, color='blue')
-
-    ### THE BETA DISTRIBUTION CONFIDENCE INTERVALS ARE CURRENTLY DISABLED DUE TO INCORRECT EQUATIONS
-    # @staticmethod
-    # def beta_CI(
-    #     self,
-    #     func,
-    #     plot_CI=None,
-    #     CI_type=None,
-    #     CI=None,
-    #     text_title="",
-    #     color=None,
-    #     q=None,
-    # ):
-    #     """
-    #     Generates the confidence intervals for CDF, SF, and CHF
-    #     This is a utility function intended only for use by the Beta CDF, SF, and CHF functions.
-    #     """
-    #     points = 200  # the number of data points in each confidence interval (upper and lower) line
-    #
-    #     # this determines if the user has specified for the CI bounds to be shown or hidden.
-    #     if (
-    #         validate_CI_params(self.alpha_SE, self.beta_SE, self.Cov_alpha_beta, self.Z)
-    #         is True
-    #         and (plot_CI is True or q is not None)
-    #         and CI_type is not None
-    #     ):
-    #         if CI_type in ["time", "t", "T", "TIME", "Time"]:
-    #             CI_type = "time"
-    #         elif CI_type in [
-    #             "reliability",
-    #             "r",
-    #             "R",
-    #             "RELIABILITY",
-    #             "rel",
-    #             "REL",
-    #             "Reliability",
-    #         ]:
-    #             CI_type = "reliability"
-    #         if func not in ["CDF", "SF", "CHF"]:
-    #             raise ValueError("func must be either CDF, SF, or CHF")
-    #         if type(q) not in [list, np.ndarray, type(None)]:
-    #             raise ValueError(
-    #                 "q must be a list or array of quantiles. Default is None"
-    #             )
-    #         if q is not None:
-    #             q = np.asarray(q)
-    #
-    #         CI_100 = round(
-    #             CI * 100, 4
-    #         )  # formats the confidence interval value ==> 0.95 becomes 95
-    #         Z = -ss.norm.ppf((1 - CI) / 2)  # converts CI to Z
-    #         if CI_100 % 1 == 0:
-    #             CI_100 = int(CI_100)  # removes decimals if the only decimal is 0
-    #         text_title = str(
-    #             text_title + "\n" + str(CI_100) + "% confidence bounds on " + CI_type
-    #         )  # Adds the CI and CI_type to the title
-    #         plt.title(text_title)
-    #         plt.subplots_adjust(top=0.81)
-    #
-    #         def u(t, alpha, beta):  # u = R
-    #             return 1 - abetainc(alpha, beta, t)
-    #
-    #         def v(R, alpha, beta):  # v = ln(t)
-    #             return anp.log(abetaincinv(alpha, beta, 1 - R))
-    #
-    #         du_da = jac(u, 1)  # derivative wrt alpha (bounds on reliability)
-    #         du_db = jac(u, 2)  # derivative wrt beta (bounds on reliability)
-    #         dv_da = jac(v, 1)  # derivative wrt alpha (bounds on time)
-    #         dv_db = jac(v, 2)  # derivative wrt beta (bounds on time)
-    #
-    #         def var_u(self, v):  # v is time
-    #             return (
-    #                 du_da(v, self.alpha, self.beta) ** 2 * self.alpha_SE ** 2
-    #                 + du_db(v, self.alpha, self.beta) ** 2 * self.beta_SE ** 2
-    #                 + 2
-    #                 * du_da(v, self.alpha, self.beta)
-    #                 * du_db(v, self.alpha, self.beta)
-    #                 * self.Cov_alpha_beta
-    #             )
-    #
-    #         def var_v(self, u):  # u is reliability
-    #             return (
-    #                 dv_da(u, self.alpha, self.beta) ** 2 * self.alpha_SE ** 2
-    #                 + dv_db(u, self.alpha, self.beta) ** 2 * self.beta_SE ** 2
-    #                 + 2
-    #                 * dv_da(u, self.alpha, self.beta)
-    #                 * dv_db(u, self.alpha, self.beta)
-    #                 * self.Cov_alpha_beta
-    #             )
-    #
-    #         # Confidence bounds on time (in terms of reliability)
-    #         if CI_type == "time":
-    #             # Y is reliability (R)
-    #             if func == "CHF":
-    #                 chf_array = np.linspace(1e-8, self._chf[-2], points)
-    #                 Y = np.exp(-chf_array)
-    #             else:  # CDF and SF
-    #                 if q is not None:
-    #                     Y = q
-    #                 else:
-    #                     Y = transform_spaced(
-    #                         "beta",
-    #                         y_lower=1e-8,
-    #                         y_upper=1 - 1e-8,
-    #                         num=points,
-    #                         alpha=self.alpha,
-    #                         beta=self.beta,
-    #                     )
-    #
-    #             # v is ln(t)
-    #             v_lower = v(Y, self.alpha, self.beta) - Z * (var_v(self, Y) ** 0.5)
-    #             v_upper = v(Y, self.alpha, self.beta) + Z * (var_v(self, Y) ** 0.5)
-    #
-    #             t_lower = np.exp(v_lower)
-    #             t_upper = np.exp(v_upper)
-    #
-    #             # clean the arrays of illegal values (<=0, nans, >=1 (if CDF or SF))
-    #             t_lower, t_upper, Y, Y = clean_CI_arrays(
-    #                 xlower=t_lower, xupper=t_upper, ylower=Y, yupper=Y, plot_type=func
-    #             )
-    #             # artificially correct for any reversals
-    #             if q is None and len(t_lower) > 2 and len(t_upper)>2:
-    #                 t_lower = no_reverse(t_lower, CI_type=CI_type, plot_type=func)
-    #                 t_upper = no_reverse(t_upper, CI_type=CI_type, plot_type=func)
-    #
-    #             if func == "CDF":
-    #                 yy = 1 - Y
-    #             elif func == "SF":
-    #                 yy = Y
-    #             elif func == "CHF":
-    #                 yy = -np.log(Y)
-    #
-    #             if plot_CI is True:
-    #                 fill_no_autoscale(
-    #                     xlower=t_lower,
-    #                     xupper=t_upper,
-    #                     ylower=yy,
-    #                     yupper=yy,
-    #                     color=color,
-    #                     alpha=0.3,
-    #                     linewidth=0,
-    #                 )
-    #
-    #                 # still need to specify color otherwise the invisible CI lines will consume default colors
-    #                 # these are invisible but need to be added to the plot for crosshairs() to find them
-    #                 line_no_autoscale(x=t_lower, y=yy, color=color, linewidth=0)
-    #                 line_no_autoscale(x=t_upper, y=yy, color=color, linewidth=0)
-    #                 # plt.scatter(t_lower, yy, linewidth=1, color='blue',marker='x')
-    #                 # plt.scatter(t_upper, yy, linewidth=1, color='red',marker='x')
-    #             elif plot_CI is None and q is not None:
-    #                 return t_lower, t_upper
-    #
-    #         # Confidence bounds on Reliability (in terms of time)
-    #         elif CI_type == "reliability":
-    #             # normally we only use transform spaced for bounds on time but in this application it works
-    #             # for bounds on reliability since t is 0 to 1. np.linspace does not work as well here.
-    #             t = transform_spaced(
-    #                 "beta",
-    #                 y_lower=1e-8,
-    #                 y_upper=1 - 1e-8,
-    #                 num=points,
-    #                 alpha=self.alpha,
-    #                 beta=self.beta,
-    #             )
-    #
-    #             # u is reliability
-    #             R = u(t, self.alpha, self.beta)
-    #             varR = var_u(self, t)
-    #             R_lower = R / (R + (1 - R) * np.exp((Z * varR ** 0.5) / (R * (1 - R))))
-    #             R_upper = R / (R + (1 - R) * np.exp((-Z * varR ** 0.5) / (R * (1 - R))))
-    #
-    #             # transform back from u = R
-    #             Y_lower = R_lower
-    #             Y_upper = R_upper
-    #
-    #             # clean the arrays of illegal values (<=0, nans, >=1 (if CDF or SF))
-    #             t, t, Y_lower, Y_upper = clean_CI_arrays(
-    #                 xlower=t, xupper=t, ylower=Y_lower, yupper=Y_upper, plot_type=func
-    #             )
-    #             # artificially correct for any reversals
-    #             if len(Y_lower) > 2 and len(Y_upper) > 2:
-    #                 Y_lower = no_reverse(Y_lower, CI_type=CI_type, plot_type=func)
-    #                 Y_upper = no_reverse(Y_upper, CI_type=CI_type, plot_type=func)
-    #
-    #             if func == "CDF":
-    #                 yy_lower = 1 - Y_lower
-    #                 yy_upper = 1 - Y_upper
-    #             elif func == "SF":
-    #                 yy_lower = Y_lower
-    #                 yy_upper = Y_upper
-    #             elif func == "CHF":
-    #                 yy_lower = -np.log(Y_lower)
-    #                 yy_upper = -np.log(Y_upper)
-    #
-    #             fill_no_autoscale(
-    #                 xlower=t,
-    #                 xupper=t,
-    #                 ylower=yy_lower,
-    #                 yupper=yy_upper,
-    #                 color=color,
-    #                 alpha=0.3,
-    #                 linewidth=0,
-    #             )
-    #
-    #             # these are invisible but need to be added to the plot for crosshairs() to find them
-    #             # still need to specify color otherwise the invisible CI lines will consume default colors
-    #             line_no_autoscale(x=t, y=yy_lower, color=color, linewidth=0)
-    #             line_no_autoscale(x=t, y=yy_upper, color=color, linewidth=0)
-    #             # plt.scatter(t, yy_upper, color='red')
-    #             # plt.scatter(t, yy_lower, color='blue')
+                if plot_CI is True:
+                    fill_no_autoscale(
+                        xlower=t,
+                        xupper=t,
+                        ylower=yy_lower,
+                        yupper=yy_upper,
+                        color=color,
+                        alpha=0.3,
+                        linewidth=0,
+                    )
+                    line_no_autoscale(
+                        x=t, y=yy_lower, color=color, linewidth=0
+                    )  # these are invisible but need to be added to the plot for crosshairs() to find them
+                    line_no_autoscale(
+                        x=t, y=yy_upper, color=color, linewidth=0
+                    )  # still need to specify color otherwise the invisible CI lines will consume default colors
+                    # plt.scatter(t, yy_upper, color='red')
+                    # plt.scatter(t, yy_lower, color='blue')
+                if x is not None:
+                    return Y_lower, Y_upper
 
 
 def linear_regression(
@@ -3611,12 +4470,48 @@ def linear_regression(
     **kwargs
 ):
     """
-    linear algebra solution to find line of best fix passing through points (x,y)
-    specify slope or intercept to force these parameters.
-    Rank regression can be on X (RRX) or Y (RRY). Default is RRX.
-    note that slope depends on RRX_or_RRY. If you use RRY then slope is dy/dx but if you use RRX then slope is dx/dy.
-    :returns slope,intercept in terms of Y = slope * X + intercept
+    This function provides the linear algebra solution to find line of best fit
+    passing through points (x,y). Options to specify slope or intercept enable
+    these parameters to be forced.
 
+    Rank regression can be on X (RRX) or Y (RRY). Default is RRX.
+    Note that slope depends on RRX_or_RRY. If you use RRY then slope is dy/dx
+    but if you use RRX then slope is dx/dy.
+
+    Parameters
+    ----------
+    x : array, list
+        The x values
+    y : array, list
+        The y values
+    slope : float, int, optional
+        Used to force the slope. Default is None.
+    x_intercept : float, int, optional
+        Used to force the x-intercept. Default is None. Only used for RRY.
+    y_intercept : float, int, optional
+        Used to force the y-intercept. Default is None. Only used for RRX.
+    RRX_or_RRY : str, optional
+        Must be "RRY" or "RRX". Default is "RRY".
+    show_plot : bool, optional
+        If True, a plot of the line and points will be generated. Use plt.show()
+        to show it.
+    kwargs
+        Keyword arguments for the plot that are passed to matplotlib for the
+        line.
+
+    Returns
+    -------
+    slope : float
+        The slope of the line.
+    intercept : float
+        The intercept (x or y depending on RRX_or_RRY) of the line.
+
+    Notes
+    -----
+    The equation of a line used here is Y = slope * X + intercept. This is the
+    RRY form. For RRX it can be rearranged to X = (Y - intercept)/slope
+
+    For more information on linear regression, see the `documentation <https://reliability.readthedocs.io/en/latest/How%20does%20Least%20Squares%20Estimation%20work.html>`_.
     """
     x = np.asarray(x)
     y = np.asarray(y)
@@ -3674,9 +4569,14 @@ def linear_regression(
         raise ValueError(err_str)
 
     if RRX_or_RRY == "RRY":
-        solution = (
-            np.linalg.inv(xx.T.dot(xx)).dot(xx.T).dot(yy)
-        )  # linear regression formula for RRY
+        try:
+            solution = (
+                np.linalg.inv(xx.T.dot(xx)).dot(xx.T).dot(yy)
+            )  # linear regression formula for RRY
+        except LinAlgError:
+            raise RuntimeError(
+                "An error has occurred when attempting to find the initial guess using least squares estimation.\nThis error is caused by a non-invertable matrix.\nThis can occur when there are only two very similar failure times like 10 and 10.000001.\nThere is no solution to this error, other than to use failure times that are more unique."
+            )
         if y_intercept is not None:
             m = solution[0]
             c = y_intercept
@@ -3687,9 +4587,14 @@ def linear_regression(
             m = solution[0]
             c = solution[1]
     else:  # RRX
-        solution = (
-            np.linalg.inv(yy.T.dot(yy)).dot(yy.T).dot(xx)
-        )  # linear regression formula for RRX
+        try:
+            solution = (
+                np.linalg.inv(yy.T.dot(yy)).dot(yy.T).dot(xx)
+            )  # linear regression formula for RRX
+        except LinAlgError:
+            raise RuntimeError(
+                "An error has occurred when attempting to find the initial guess using least squares estimation.\nThis error is caused by a non-invertable matrix.\nThis can occur when there are only two very similar failure times like 10 and 10.000001.\nThere is no solution to this error, other than to use failure times that are more unique."
+            )
         if x_intercept is not None:
             m_x = solution[0]
             m = 1 / m_x
@@ -3727,14 +4632,47 @@ def linear_regression(
 
 def least_squares(dist, failures, right_censored, method="RRX", force_shape=None):
     """
-    Uses least squares or non-linear least squares estimation to fit the parameters of the distribution to the plotting positions.
-    Plotting positions are based on failures and right_censored so while least squares estimation does not consider the right_censored data in the same way as MLE, the plotting positions do.
-    The output of this method may be used as the initial guess for the MLE method.
-    method may be RRX or RRY. Default is RRX.
+    Uses least squares or non-linear least squares estimation to fit the
+    parameters of the distribution to the plotting positions.
 
-    return the model's parameters in a list.
-        E.g. for "Weibull_2P" it will return [alpha,beta]
-             for "Weibull_3P" it will return [alpha,beta,gamma]
+    Plotting positions are based on failures and right_censored so while least
+    squares estimation does not consider the right_censored data in the same way
+    as MLE, the plotting positions do. This means that right censored data are
+    not ignored by least squares estimation, but the way the values are treated
+    differs between least squares and MLE.
+
+    The output of this method may be used as the initial guess for the MLE
+    method.
+
+    Parameters
+    ----------
+    dist : object
+        Thew distribution object
+    failures : array, list
+        The failure data
+    right_censored : array, list
+        The right censored data. If there is no data then this should be an
+        empty list.
+    method : str, optional
+        Must be "RRX" or "RRY". Default is RRX.
+    force_shape : float, int, optional
+        Used to force the shape (beta or sigma) parameter. Default is None which
+        will not force the slope.
+
+    Returns
+    -------
+    model_parameters : list
+        The model's parameters in a list. eg. for "Weibull_2P" it will return
+        [alpha,beta]. For "Weibull_3P" it will return [alpha,beta,gamma].
+
+    Notes
+    -----
+    For more information on least squares estimation, see the `documentation <https://reliability.readthedocs.io/en/latest/How%20does%20Least%20Squares%20Estimation%20work.html>`_.
+
+    For cases where the CDF is not linearizable (eg. Weibull_3P), this function
+    uses non-linear least squares (NLLS) which uses scipy's curve_fit to find
+    the parameters. This may sometimes fail as curve_fit is an optimization
+    routine that needs an initial guess provided by this function.
     """
 
     if min(failures) <= 0 and dist not in ["Normal_2P", "Gumbel_2P"]:
@@ -4175,21 +5113,73 @@ def least_squares(dist, failures, right_censored, method="RRX", force_shape=None
 
 def ALT_least_squares(model, failures, stress_1_array, stress_2_array=None):
     """
-    Uses least squares regression (with linear algebra) to fit the parameters of the ALT stress-life distribution to the time to failure data.
-    The output of this method may be used as the initial guess for the MLE method.
+    Uses least squares estimation to fit the parameters of the ALT stress-life
+    model to the time to failure data.
 
-    return the model's parameters in a list
-        Exponential - [a,b]
-        Eyring - [a,c]
-        Power - [a,n]
-        Dual_Exponential - [a,b,c]
-        Power_Exponential - [a,c,n]
+    Unlike least_squares for probability distributions, this function does not
+    use the plotting positions because it is working on the life-stress model
+    L(S) and not the life distribution F(t), so it uses the failure data directly.
+
+    This function therefore only fits the parameters of the model to the failure
+    data and does not take into account the right censored data. Right censored
+    data is only used when fitting the life-stress distribution (eg. "Weibull
+    Eyring") which is done using MLE.
+
+    The output of this function is used as the initial guess for the MLE
+    method for the life-stress distribution.
+
+    Parameters
+    ----------
+    model : str
+        Must be either "Exponential", "Eyring", "Power", "Dual_Exponential",
+        "Power_Exponential", or "Dual_Power"
+    failures : array, list
+        The failure data
+    stress_1_array : list, array
+        The stresses corresponding to the failure data.
+    stress_2_array : list, array, optional
+        The second stresses corresponding to the failure data. Used only for
+        dual-stress models. Default is None.
+
+    Returns
+    -------
+    model_parameters : list
+        The model's parameters in a list. This depends on the model.
+        Exponential - [a,b], Eyring - [a,c], Power - [a,n],
+        Dual_Exponential - [a,b,c], Power_Exponential - [a,c,n],
         Dual_Power - [c,m,n]
+
+    Notes
+    -----
+    For more information on least squares estimation, see the `documentation <https://reliability.readthedocs.io/en/latest/How%20does%20Least%20Squares%20Estimation%20work.html>`_.
+    For more information on fitting ALT models, see the `documentation <https://reliability.readthedocs.io/en/latest/Equations%20of%20ALT%20models.html>`_.
+
+    For models with more than two parameters, linear algebra is equally valid,
+    but in these cases it is not finding the line of best fit, it is instead
+    finding the plane of best fit.
     """
 
     def non_invertable_handler(xx, yy, model):
-        # this performs the linear algebra to find the solution
-        # it also handles the occasional case of a non-invertable matrix
+        """
+        This subfunction performs the linear algebra to find the solution.
+        It also handles the occasional case of a non-invertable matrix.
+        This function is separated out for repeated use.
+
+        Parameters
+        ----------
+        xx : list, array
+            The x data
+        yy : list, array
+            The y data
+        model : str
+            The model. Used only for printing the correct error string.
+
+        Returns
+        -------
+        model_parameters : list
+            The model parameters in a list. These are the linearized form and
+            need to be converted back to find the actual model parameters.
+        """
         try:
             # linear regression formula for RRY
             out = np.linalg.inv(xx.T.dot(xx)).dot(xx.T).dot(yy)
@@ -4258,9 +5248,44 @@ def ALT_least_squares(model, failures, stress_1_array, stress_2_array=None):
 
 class LS_optimization:
     """
-    Performs optimization using least squares regression.
-    There is no actual "optimization" done here, with the exception of checking which method (RRX or RRY) gave the better solution.
-    This function is used be each of the Fitters.
+    This function is a control function for least squares regression and it is
+    used by each of the Fitters. There is no actual "optimization" done here,
+    with the exception of checking which method (RRX or RRY) gives the better
+    solution.
+
+    Parameters
+    ----------
+    func_name : str
+        The function to be fitted. Eg. "Weibull_2P".
+    LL_func : function
+        The log-likelihood function from the fitter
+    failures : list, array
+        The failure data
+    right_censored : list, array
+        The right censored data. If there is no right censored data then this
+        should be an empty array.
+    method : str, optional
+        Must be either "RRX", "RRY", "LS", or "NLLS". Default is "LS".
+    force_shape : float, int, optional
+        The shape parameter to be forced. Default is None which results in no
+        forcing of the shape parameter.
+    LL_func_force : function
+        The log-likelihood function for when the shape parameter is forced. Only
+        required if force_shape is not None.
+
+    Returns
+    -------
+    guess : list
+        The guess of the models parameters. The length of this list depends on
+        the number of parameters in the model. The guess is obtained using
+        Utils.least_squares
+    method : str
+        The method used. This will be either "RRX", "RRY" or "NLLS".
+
+    Notes
+    -----
+    If method="LS" then both "RRX" and "RRY" will be tried and the best one will
+    be returned.
     """
 
     def __init__(
@@ -4341,8 +5366,81 @@ class LS_optimization:
 
 class MLE_optimization:
     """
-    This function performs the heavy lifting of finding the optimal parameters using the method of maximum likelihood expectation (MLE).
-    This functions is used by each of the fitters.
+    This function performs Maximum Likelihood Estimation (MLE) to find the
+    optimal parameters of the probability distribution. This functions is used
+    by each of the fitters.
+
+    Parameters
+    ----------
+    func_name : str
+        The function to be fitted. Eg. "Weibull_2P".
+    LL_func : function
+        The log-likelihood function from the fitter
+    initial_guess : list, array
+        The initial guess of the model parameters that is used by the optimizer.
+    failures : list, array
+        The failure data
+    right_censored : list, array
+        The right censored data. If there is no right censored data then this
+        should be an empty array.
+    optimizer : str, None
+        This must be either "TNC", "L-BFGS-B", "nelder-mead", "powell", "best",
+        "all" or None. Fot detail on how these optimizers are used, please see
+        the `documentation <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
+    force_shape : float, int, optional
+        The shape parameter to be forced. Default is None which results in no
+        forcing of the shape parameter.
+    LL_func_force : function
+        The log-likelihood function for when the shape parameter is forced. Only
+        required if force_shape is not None.
+
+    Returns
+    -------
+    scale : float
+        Only returned for Weibull_2P, Weibull_3P, Lognormal_2P, Lognormal_3P,
+        Gamma_2P, Gamma_3P, Loglogistic_2P, Loglogistic_3P, Exponential_1P,
+        Exponential_2P, Normal_2P, Beta_2P, and Gumbel_2P
+    shape : float
+        Only returned for Weibull_2P, Weibull_3P, Lognormal_2P, Lognormal_3P,
+        Gamma_2P, Gamma_3P, Loglogistic_2P, Loglogistic_3P, Normal_2P, Beta_2P,
+        and Gumbel_2P
+    alpha : float
+        Only returned for Weibull_DS, Weibull_ZI and Weibull_DSZI
+    beta : float
+        Only returned for Weibull_DS, Weibull_ZI and Weibull_DSZI
+    gamma : float
+        Only returned for Weibull_3P, Exponential_2P, Gamma_3P, Lognormal_3P,
+        and Loglogistic_3P.
+    DS : float
+        Only returned for Weibull_DS and Weibull_DSZI
+    ZI : float
+        Only returned for Weibull_ZI and Weibull_DSZI
+    alpha_1 : float
+        Only returned for Weibull_mixture and Weibull_CR
+    beta_1 : float
+        Only returned for Weibull_mixture and Weibull_CR
+    alpha_2 : float
+        Only returned for Weibull_mixture and Weibull_CR
+    beta_2 : float
+        Only returned for Weibull_mixture and Weibull_CR
+    proportion_1 : float
+        Only returned for Weibull_mixture
+    proportion_2 : float
+        Only returned for Weibull_mixture
+    success : bool
+        Whether at least one optimizer succeeded. If False then the least
+        squares result will be returned in place of the MLE result.
+    optimizer : str, None
+        The optimizer used. If MLE failed then None is returned as the
+        optimizer.
+
+    Notes
+    -----
+    Not all of the above returns are always returned. It depends on which model
+    is being used.
+
+    If the MLE method fails then the initial guess (from least squares) will be
+    returned with a printed warning.
     """
 
     def __init__(
@@ -4368,6 +5466,49 @@ class MLE_optimization:
             LL_func_force,
             func_name,
         ):
+            """
+            This sub-function does the actual optimization. It is called each
+            time a new optimizer is tried.
+
+            Parameters
+            ----------
+            LL_func : function
+                The log-likelihood function from the fitter
+            guess : list, array
+                The initial guess of the model parameters that is used by the optimizer.
+            failures : list, array
+                The failure data
+            right_censored : list, array
+                The right censored data. If there is no right censored data then this
+                should be an empty array.
+            bounds : list
+                The bounds on the solution
+            optimizer : str, None
+                This must be either "TNC", "L-BFGS-B", "nelder-mead", or
+                "powell".
+            force_shape : float, int, optional
+                The shape parameter to be forced. Default is None which results in no
+                forcing of the shape parameter.
+            LL_func_force : function
+                The log-likelihood function for when the shape parameter is forced. Only
+                required if force_shape is not None.
+            func_name : str
+                The function name. eg. "Weibull_2P"
+
+            Returns
+            -------
+            success : bool
+                Whether the optimizer was successful
+            log_likelihood : float
+                The log-likelihood of the solution
+            model_parameters : array
+                The model parameters of the solution
+
+            Notes
+            -----
+            The returns are provided in a tuple of success, log_likelihood,
+            model_parameters.
+            """
             delta_LL = 1
             LL_array = [1000000]
             runs = 0
@@ -4671,8 +5812,77 @@ class MLE_optimization:
 class ALT_MLE_optimization:
     """
     This performs the MLE method to find the parameters.
-    If the optimizer is None then all bounded optimizers will be tried and the best result (lowest log-likelihood) will be returned.
-    If the optimizer is specified then it will be used. If it fails then the initial guess will be returned with a warning.
+    If the optimizer is None then all bounded optimizers will be tried and the
+    best result (lowest log-likelihood) will be returned. If the optimizer is
+    specified then it will be used. If it fails then the initial guess will be
+    returned with a warning.
+
+    Parameters
+    ----------
+    model : str
+        Must be either "Exponential", "Eyring", "Power", "Dual_Exponential",
+        "Power_Exponential", or "Dual_Power".
+    dist : str
+        Must be either "Weibull", "Exponential", "Lognormal", or "Normal".
+    LL_func : function
+        The log-likelihood function from the fitter
+    initial_guess : list, array
+        The initial guess of the model parameters that is used by the
+        optimizer.
+    optimizer : str, None
+        This must be either "TNC", "L-BFGS-B", "nelder-mead", "powell", "best",
+        "all" or None. Fot detail on how these optimizers are used, please see
+        the `documentation <https://reliability.readthedocs.io/en/latest/Optimizers.html>`_.
+    failures : list, array
+        The failure data
+    right_censored : list, array
+        The right censored data. If there is no right censored data then this
+        should be an empty array.
+    failure_stress_1 : array, list
+        The failure stresses.
+    failure_stress_2 : array, list
+        The failure second stresses. This is only used for daul stress
+        models.
+    right_censored_stress_1 : array, list
+        The right censored stresses. If there is no right censored data
+        then this should be an empty array.
+    right_censored_stress_2 : array, list
+        The right censored second stresses. If there is no right
+        censored data then this should be an empty array. This is only
+        used for daul stress models.
+
+    Returns
+    -------
+    a : float
+        Only returned for Exponential, Eyring, Power, Dual_exponential, and
+        Power_Exponential
+    b : float
+        Only returned for Exponential and Dual_Exponential
+    c : float
+        Only returned for Eyring, Dual_Exponential, Power_Exponential and
+        Dual_Power
+    n : float
+        Only returned for Power, Power_Exponential, and Dual_Power
+    m : float
+        Only returned for Dual_Power
+    beta : float
+        Only returned for Weibull models
+    sigma : float
+        Only returned for Normal and Lognormal models
+    success : bool
+        Whether at least one optimizer succeeded. If False then the least
+        squares result will be returned in place of the MLE result.
+    optimizer : str, None
+        The optimizer used. If MLE failed then None is returned as the
+        optimizer.
+
+    Notes
+    -----
+    Not all of the above returns are always returned. It depends on which model
+    is being used.
+
+    If the MLE method fails then the initial guess (from least squares) will be
+    returned with a printed warning.
     """
 
     def __init__(
@@ -4689,7 +5899,6 @@ class ALT_MLE_optimization:
         right_censored_stress_1=None,
         right_censored_stress_2=None,
     ):
-        # this sub-function does the actual optimization. It is called each time a new optimizer is tried
         def loglik_optimizer(
             initial_guess,
             dual_stress,
@@ -4703,6 +5912,56 @@ class ALT_MLE_optimization:
             bounds,
             optimizer,
         ):
+            """
+            This sub-function does the actual optimization. It is called each
+            time a new optimizer is tried.
+
+            Parameters
+            ----------
+            initial_guess : list, array
+                The initial guess of the model parameters that is used by the
+                optimizer.
+            dual_stress : bool
+                Whether this is a dual_stress model.
+            LL_func : function
+                The log-likelihood function from the fitter
+            failures : list, array
+                The failure data
+            right_censored : list, array
+                The right censored data. If there is no right censored data then this
+                should be an empty array.
+            failure_stress_1 : array, list
+                The failure stresses.
+            failure_stress_2 : array, list
+                The failure second stresses. This is only used for daul stress
+                models.
+            right_censored_stress_1 : array, list
+                The right censored stresses. If there is no right censored data
+                then this should be an empty array.
+            right_censored_stress_2 : array, list
+                The right censored second stresses. If there is no right
+                censored data then this should be an empty array. This is only
+                used for daul stress models.
+            bounds : list
+                The bounds on the solution
+            optimizer : str, None
+                This must be either "TNC", "L-BFGS-B", "nelder-mead", or
+                "powell".
+
+            Returns
+            -------
+            success : bool
+                Whether the optimizer was successful
+            log_likelihood : float
+                The log-likelihood of the solution
+            model_parameters : array
+                The model parameters of the solution
+
+            Notes
+            -----
+            The returns are provided in a tuple of success, log_likelihood,
+            model_parameters.
+            """
             delta_LL = 1
             LL_array = [1000000]
             runs = 0
@@ -4977,6 +6236,24 @@ def write_df_to_xlsx(df, path, **kwargs):
     """
     Writes a dataframe to an xlsx file
     For use exclusively by the Convert_data module
+
+    Parameters
+    ----------
+    df : dataframe
+        The dataframe to be written
+    path : str
+        The file path to the xlsx file.
+
+    Returns
+    -------
+    None
+        Writing the dataframe is the only action from this function.
+
+    Notes
+    -----
+    The path must include the full file path including the extension. It is also
+    necessary to use r at the start to specify raw text. See the
+    `documentation <https://reliability.readthedocs.io/en/latest/Converting%20data%20between%20different%20formats.html>`_ for an example.
     """
     # this section checks whether the file exists and reprompts the user based on their choices
     ready_to_write = False
@@ -5032,8 +6309,22 @@ def write_df_to_xlsx(df, path, **kwargs):
 
 def removeNaNs(X):
     """
-    removes NaNs from a list or array. This is better than simply using "x = x[numpy.logical_not(numpy.isnan(x))]" as numpy crashes for str and bool.
-    returns a list or array of the same type as the input
+    Removes NaNs from a list or array.
+
+    Parameters
+    ----------
+    X : array, list
+        The array or list to be processed.
+
+    Returns
+    -------
+    output : list, array
+        A list or array of the same type as the input with the NaNs removed.
+
+    Notes
+    -----
+    This is better than simply using "x = x[numpy.logical_not(numpy.isnan(x))]"
+    as numpy crashes for str and bool.
     """
     if type(X) == np.ndarray:
         X = list(X)
@@ -5054,7 +6345,48 @@ def removeNaNs(X):
 
 class make_fitted_dist_params_for_ALT_probplots:
     """
-    creates a class structure for the ALT probability plots to give to Probability_plotting
+    This function creates a class structure for the ALT probability plots to
+    give to Probability_plotting.
+
+    Parameters
+    ----------
+    dist : str
+        The distribution. Must be either "Weibull", "Lognormal", "Normal", or
+        "Exponential".
+    params : list, array
+        The parameters of the model. Must be 2 elements for Weibull, Lognormal,
+        and Normal, and must be 1 element for Exponential.
+
+    Returns
+    -------
+    alpha : float
+        Only returned for Weibull
+    beta : float
+        Only returned for Weibull
+    gamma : int
+        This will always be 0. Only returned for Weibull, Lognormal, and
+        Exponential.
+    alpha_SE : None
+        Only returned for Weibull
+    beta_SE : None
+        Only returned for Weibull
+    Cov_alpha_beta : None
+        Only returned for Weibull
+    mu : float
+        Only returned for Normal and Lognormal
+    sigma : float
+        Only returned for Normal and Lognormal
+    Cov_mu_sigma : None
+        Only returned for Normal and Lognormal
+    Lambda : float
+        Only returned for Exponential
+    Lambda_SE : None
+        Only returned for Exponential
+
+    Notes
+    -----
+    This function only exists to convert a list or array of parameters into a
+    class with the correct parameters for the probability plots to use.
     """
 
     def __init__(self, dist, params):
@@ -5098,11 +6430,45 @@ def ALT_prob_plot(
     shape,
     scale_for_change_df,
     shape_for_change_df,
-    use_level_stress,
+    use_level_stress=None,
     ax=True,
 ):
     """
     Generates an ALT probability plot using the inputs provided.
+
+    Parameters
+    ----------
+    dist : str
+        Must be either "Weibull", "Exponential", "Lognormal", or "Normal"
+    model : str
+        Must be either "Exponential", "Eyring", "Power", "Dual_Exponential",
+        "Power_Exponential", or "Dual_Power".
+    stresses_for_groups : list
+        The stresses for the failure groups
+    failure_groups : list
+        The failure groups. This is a list of lists.
+    right_censored_groups
+        The failure groups. This is a list of lists.
+    life_func : function
+        The life function for the ALT life model.
+    shape : float, int
+        The shape parameter of the model.
+    scale_for_change_df : array, list
+        The list of scale parameters for the lines.
+    shape_for_change_df
+        The list of shape parameters for the lines.
+    use_level_stress : float, int, array, list, None
+        The use level stress. This must be an array or list for dual stress
+        models. Default is None.
+    ax : axis, bool, optional
+        The axis handle to use. Default is True which will create a new plot.
+        If False then no plot will be generated.
+
+    Returns
+    -------
+    current_axis : axis
+        The axis handle of the plot. If ax is specified in the inputs then this
+        will be the same handle.
     """
 
     if ax is True or issubclass(type(ax), SubplotBase) is True:
@@ -5305,11 +6671,38 @@ def life_stress_plot(
     life_func,
     failure_groups,
     stresses_for_groups,
-    use_level_stress,
+    use_level_stress=None,
     ax=True,
 ):
     """
-    Generates a life stress plot using the inputs provided. The life stress plot is an output from each of the ALT_fitters.
+    Generates a life stress plot using the inputs provided. The life stress plot
+    is an output from each of the ALT_fitters.
+
+    Parameters
+    ----------
+    model : str
+        Must be either "Exponential", "Eyring", "Power", "Dual_Exponential",
+        "Power_Exponential", or "Dual_Power".
+    dist : str
+        Must be either "Weibull", "Exponential", "Lognormal", or "Normal"
+    life_func : function
+        The life function for the ALT life model.
+    failure_groups : list
+        The failure groups. This is a list of lists.
+    stresses_for_groups : list
+        The stresses for the failure groups
+    use_level_stress : float, int, array, list, None
+        The use level stress. This must be an array or list for dual stress
+        models. Default is None.
+    ax : axis, bool, optional
+        The axis handle to use. Default is True which will create a new plot.
+        If False then no plot will be generated.
+
+    Returns
+    -------
+    current_axis : axis
+        The axis handle of the plot. If ax is specified in the inputs then this
+        will be the same handle.
     """
     if ax is True or issubclass(type(ax), SubplotBase) is True:
         if model in ["Dual_Exponential", "Power_Exponential", "Dual_Power"]:
@@ -5407,6 +6800,7 @@ def life_stress_plot(
                 linewidth=1,
                 antialiased=False,
                 alpha=0.5,
+                zorder=0,
             )
             for i, stress in enumerate(stresses_for_groups):
                 # plot the failures as a scatter plot
@@ -5422,6 +6816,7 @@ def life_stress_plot(
                         + ", "
                         + str(round_to_decimals(stress[1]))
                     ),
+                    zorder=1,
                 )
             if use_level_stress is not None:
                 # plot the use level stress
@@ -5438,9 +6833,11 @@ def life_stress_plot(
                         + str(round_to_decimals(use_level_stress[1]))
                     ),
                     marker="^",
+                    zorder=2,
                 )
             ax.set_zlabel("Life")
             ax.set_zlim(bottom=0)
+            ax.computed_zorder = False  # computed_zorder ensures the specified zorder is respected so that the scatter plot sits on top of the surface
             plt.xlabel("Stress 1")
             plt.ylabel("Stress 2")
             plt.xlim(min(stress_1_array), max(stress_1_array))
@@ -5509,13 +6906,40 @@ def life_stress_plot(
 
 def xy_downsample(x, y, downsample_factor=None, default_max_values=1000):
     """
-    Downsamples the x and y arrays.
+    This function downsamples the x and y arrays. This exists to make plotting
+    much faster, particularly when matplotlib becomes very slow for tens of
+    thousands of datapoints.
+
+    Parameters
+    ----------
+    x : array, list
+        The x values
+    y : array, list
+        The y values
+    downsample_factor : int, optional
+        How must downsampling to do. See Notes for more detail.
+    default_max_values : int, optional
+        The maximum number of values to be returned if downsample_factor is
+        None. See Notes for more detail.
+
+    Returns
+    -------
+    x : array
+        The downsampled x values
+    y : array
+        The downsampled y values
+
+    Notes
+    -----
     Downsampling is done using the downsample_factor. If the down_sample factor
     is 2 then every second value will be returned, if 3 then every third value
     will be returned. The first and last items will always be included in the
-    downsampled dataset. If downsample_factor is not specified, downsampling
-    will only occur if there are more than default_max_values and the downsample
-    factor will aim for a minimum of 500 values to be returned.
+    downsampled dataset.
+
+    If downsample_factor is not specified, downsampling will only occur if there
+    are more than default_max_values. The downsample factor will aim for the
+    number of values to be returned to be between default_max_values/2 and
+    default_max_values. By default this is between 500 and 1000.
     """
 
     x_sorted = np.sort(x)
@@ -5543,3 +6967,433 @@ def xy_downsample(x, y, downsample_factor=None, default_max_values=1000):
                 x_downsample.append(x_sorted[idx])
                 y_downsample.append(y_sorted[idx])
             return x_downsample, y_downsample
+
+
+def distributions_input_checking(
+    self,
+    func,
+    xvals,
+    xmin,
+    xmax,
+    show_plot=None,
+    plot_CI=None,
+    CI_type=None,
+    CI=0.95,
+    CI_y=None,
+    CI_x=None,
+):
+    """
+    Performs checks and sets default values for the inputs to distributions
+    sub function (PDF, CDF, SF, HF, CHF)
+
+    Parameters
+    ----------
+    self : object
+        Distribution object created by reliability.Distributions
+    func : str
+        Must be either 'PDF','CDF', 'SF', 'HF', 'CHF'
+    xvals : array, list
+        x-values for plotting.
+    xmin : int, float
+        minimum x-value for plotting.
+    xmax : int, float
+        maximum x-value for plotting.
+    show_plot : bool
+        Whether the plot is to be shown.
+    plot_CI : bool, optional
+        Whether the confidence intervals are to be shown on the plot. Default is
+        None.
+    CI_type : str, optional
+        If specified, it must be "time" or "reliability". Default is None
+    CI : float, optional
+        The confidence intervals. If specified, it must be between 0 and 1.
+        Default is None.
+    CI_y : list, array, optional
+        The confidence interval y-values to trace. Default is None.
+    CI_x : list, array, optional
+        The confidence interval x-values to trace. Default is None.
+
+    Returns
+    -------
+    X : array
+        An array of the x-values for the plot. Created using generate_X_array
+    xvals : array, list
+        x-values for plotting.
+    xmin : int, float
+        minimum x-value for plotting.
+    xmax : int, float
+        maximum x-value for plotting.
+    show_plot : bool
+        Whether the plot is to be shown. Default is True. Only returned if func
+        is 'PDF','CDF', 'SF', 'HF, or 'CHF'
+    plot_CI : bool
+        Whether the confidence intervals are to be shown on the plot. Default is
+        True. Only returned if func is 'CDF', 'SF', or 'CHF' and self.name
+        !='Beta'.
+    CI_type : str
+        The type of confidence interval. Will be either "time" or "reliability".
+        Default is "time". Only returned if func is 'CDF', 'SF', or 'CHF' and
+        self.name !='Beta'. If self.name=='Exponential' it will return None.
+    CI : float
+        The confidence intervals between 0 and 1. Default is 0.95. Only returned
+        if func is 'CDF', 'SF', or 'CHF' and self.name !='Beta'.
+    CI_y : list, array, float, int
+        The confidence interval y-values to trace. Default is None. Only
+        returned if func is 'CDF', 'SF', or 'CHF' and self.name !='Beta'.
+    CI_x : list, array, float, int
+        The confidence interval x-values to trace. Default is None. Only
+        returned if func is 'CDF', 'SF', or 'CHF' and self.name !='Beta'.
+    """
+    if func not in ["PDF", "CDF", "SF", "HF", "CHF", "ALL"]:
+        raise ValueError("func must be either 'PDF','CDF', 'SF', 'HF', 'CHF', 'ALL'")
+
+    # type checking
+    if type(xvals) not in [type(None), list, np.ndarray, int, float]:
+        raise ValueError("xvals must be an int, float, list, or array. Default is None")
+    if type(xmin) not in [type(None), int, float]:
+        raise ValueError("xmin must be an int or float. Default is None")
+    if type(xmax) not in [type(None), int, float]:
+        raise ValueError("xmax must be an int or float. Default is None")
+    if type(show_plot) not in [type(None), bool]:
+        raise ValueError("show_plot must be True or False. Default is True")
+    if type(plot_CI) not in [type(None), bool]:
+        raise ValueError(
+            "plot_CI must be True or False. Default is True. Only used if the distribution object was created by Fitters."
+        )
+    if type(CI_type) not in [type(None), str]:
+        raise ValueError(
+            'CI_type must be "time" or "reliability". Default is "time". Only used if the distribution object was created by Fitters.'
+        )
+    if type(CI) not in [type(None), float]:
+        raise ValueError(
+            "CI must be between 0 and 1. Default is 0.95 for 95% confidence interval. Only used if the distribution object was created by Fitters."
+        )
+    if type(CI_y) not in [type(None), list, np.ndarray, float, int]:
+        raise ValueError(
+            'CI_y must be a list, array, float, or int. Default is None. Only used if the distribution object was created by Fitters anc CI_type="time".'
+        )
+    if type(CI_x) not in [type(None), list, np.ndarray, float, int]:
+        raise ValueError(
+            'CI_x must be a list, array, float, or int. Default is None. Only used if the distribution object was created by Fitters anc CI_type="reliability".'
+        )
+
+    # default values
+    if (
+        xmin is None
+        and xmax is None
+        and type(xvals) not in [list, np.ndarray, type(None)]
+    ):
+        X = xvals
+        show_plot = False
+    else:
+        X = generate_X_array(dist=self, xvals=xvals, xmin=xmin, xmax=xmax)
+
+    if CI is not None:
+        if CI <= 0 or CI >= 1:
+            raise ValueError("CI must be between 0 and 1")
+    elif self.Z is not None:
+        CI = 1 - ss.norm.cdf(-self.Z) * 2  # converts Z to CI
+    else:
+        CI = 0.95
+
+    if show_plot is None:
+        show_plot = True
+
+    if plot_CI is None:
+        plot_CI == True
+
+    if self.name == "Exponential":
+        if CI_type is not None:
+            colorprint(
+                "WARNING: CI_type is not required for the Exponential distribution since the confidence intervals of time and reliability are identical",
+                text_color="red",
+            )
+            CI_type = None
+    else:
+        if CI_type is None:
+            CI_type = "time"
+        if CI_type.upper() in ["T", "TIME"]:
+            CI_type = "time"
+        elif CI_type.upper() in ["R", "REL", "RELIABILITY"]:
+            CI_type = "reliability"
+
+    if CI_x is not None and CI_y is not None:
+        if CI_type == "reliability":
+            colorprint(
+                "WARNING: CI_x and CI_y can not be specified at the same time. CI_y has been reset to None and the results for CI_x will be provided.",
+                text_color="red",
+            )
+            CI_y = None
+        else:
+            colorprint(
+                "WARNING: CI_x and CI_y can not be specified at the same time. CI_x has been reset to None and the results for CI_y will be provided.",
+                text_color="red",
+            )
+            CI_x = None
+
+    if CI_x is not None:
+        if type(CI_x) in [float, int]:
+            if CI_x <= 0 and self.name not in ["Normal", "Gumbel"]:
+                raise ValueError("CI_x must be greater than 0")
+            CI_x = np.array([CI_x])  # package as array. Will be unpacked later
+        else:
+            CI_x = np.asarray(CI_x)
+            if min(CI_x) <= 0 and self.name not in ["Normal", "Gumbel"]:
+                raise ValueError("CI_x values must all be greater than 0")
+
+    if CI_y is not None:
+        if type(CI_y) in [float, int]:
+            if CI_y <= 0:
+                raise ValueError("CI_y must be greater than 0")
+            if CI_y >= 1 and func in ["CDF", "SF"]:
+                raise ValueError("CI_y must be less than 1")
+            CI_y = np.array([CI_y])  # package as array. Will be unpacked later
+        else:
+            CI_y = np.asarray(CI_y)
+            if min(CI_y) <= 0:
+                raise ValueError("CI_y values must all be above 0")
+            if max(CI_y) >= 1 and func in ["CDF", "SF"]:
+                raise ValueError("CI_y values must all be below 1")
+
+    if self.name == "Beta":
+        if func in ["PDF", "CDF", "SF", "HF", "CHF"]:
+            return X, xvals, xmin, xmax, show_plot
+        else:  # func ='ALL' which is used for the .plot() method
+            return X, xvals, xmin, xmax
+    else:  # everything except the Beta distribution
+        if func in ["PDF", "HF"]:
+            return X, xvals, xmin, xmax, show_plot
+        elif func in ["CDF", "SF", "CHF"]:
+            return X, xvals, xmin, xmax, show_plot, plot_CI, CI_type, CI, CI_y, CI_x
+        else:  # func ='ALL' which is used for the .plot() method
+            return X, xvals, xmin, xmax
+
+
+def extract_CI(dist, func="CDF", CI_type="time", CI=0.95, CI_y=None, CI_x=None):
+    """
+    Extracts the confidence bounds at CI_x or CI_y.
+
+    Parameters
+    ----------
+    dist : object
+        Distribution object from reliability.Distributions
+    func : str
+        Must be either 'CDF', 'SF', 'CHF'
+    CI_type : str
+        Must be either 'time' or 'reliability'
+    CI : float
+        The confidence interval. Must be between 0 and 1.
+    CI_y : list, array
+        The y-values from which to extract the confidence interval (x-values)
+        for bounds on time.
+    CI_x : list, array
+        The x-values from which to extract the confidence interval (y-values)
+        for bounds on reliability.
+
+    Returns
+    -------
+    lower : array
+        An array of the lower confidence bounds at CI_x or CI_y
+    upper : array
+        An array of the upper confidence bounds at CI_x or CI_y
+
+    Notes
+    -----
+    If CI_type="time" then CI_y must be specified in order to extract the
+    confidence bounds on time.
+
+    If CI_type="reliability" then CI_x must be specified in order to extract the
+    confidence bounds on reliability.
+    """
+
+    if dist.name == "Exponential":
+        if CI_y is not None and CI_x is not None:
+            raise ValueError(
+                "Both CI_x and CI_y have been provided. Please provide only one."
+            )
+        if CI_y is not None:
+            if func == "SF":
+                q = np.asarray(CI_y)
+            elif func == "CDF":
+                q = 1 - np.asarray(CI_y)
+            elif func == "CHF":
+                q = np.exp(-np.asarray(CI_y))
+            else:
+                raise ValueError("func must be CDF, SF, or CHF")
+            SF_time = distribution_confidence_intervals.exponential_CI(
+                self=dist, CI=CI, q=q
+            )
+            lower, upper = SF_time[0], SF_time[1]
+        elif CI_x is not None:
+            SF_rel = distribution_confidence_intervals.exponential_CI(
+                self=dist, CI=CI, x=CI_x
+            )
+            if func == "SF":
+                lower, upper = SF_rel[1], SF_rel[0]
+            elif func == "CDF":
+                lower, upper = 1 - SF_rel[0], 1 - SF_rel[1]
+            elif func == "CHF":
+                lower, upper = -np.log(SF_rel[0]), -np.log(SF_rel[1])
+            else:
+                raise ValueError("func must be CDF, SF, or CHF")
+        else:
+            lower, upper = None, None
+    else:
+        if CI_y is not None and CI_x is not None:
+            raise ValueError(
+                "Both CI_x and CI_y have been provided. Please provide only one."
+            )
+        if CI_x is not None and CI_y is None and CI_type == "time":
+            colorprint(
+                'WARNING: If CI_type="time" then CI_y must be specified in order to extract the confidence bounds on time.',
+                text_color="red",
+            )
+            lower, upper = None, None
+        elif CI_y is not None and CI_x is None and CI_type == "reliability":
+            colorprint(
+                'WARNING: If CI_type="reliability" then CI_x must be specified in order to extract the confidence bounds on reliability.',
+                text_color="red",
+            )
+            lower, upper = None, None
+        elif (CI_y is not None and CI_type == "time") or (
+            CI_x is not None and CI_type == "reliability"
+        ):
+            if CI_type == "time":
+                if func == "SF":
+                    q = np.asarray(CI_y)
+                elif func == "CDF":
+                    q = 1 - np.asarray(CI_y)
+                elif func == "CHF":
+                    q = np.exp(-np.asarray(CI_y))
+                else:
+                    raise ValueError("func must be CDF, SF, or CHF")
+            if dist.name == "Weibull":
+                if CI_type == "time":
+                    SF_time = distribution_confidence_intervals.weibull_CI(
+                        self=dist, CI_type="time", CI=CI, q=q
+                    )
+                    lower, upper = SF_time[0], SF_time[1]
+                elif CI_type == "reliability":
+                    SF_rel = distribution_confidence_intervals.weibull_CI(
+                        self=dist, CI_type="reliability", CI=CI, x=CI_x
+                    )
+                    if func == "SF":
+                        lower, upper = SF_rel[0], SF_rel[1]
+                    elif func == "CDF":
+                        lower, upper = 1 - SF_rel[1], 1 - SF_rel[0]
+                    elif func == "CHF":
+                        lower, upper = -np.log(SF_rel[1]), -np.log(SF_rel[0])
+            elif dist.name == "Normal":
+                if CI_type == "time":
+                    SF_time = distribution_confidence_intervals.normal_CI(
+                        self=dist, CI_type="time", CI=CI, q=q
+                    )
+                    lower, upper = SF_time[0], SF_time[1]
+                elif CI_type == "reliability":
+                    SF_rel = distribution_confidence_intervals.normal_CI(
+                        self=dist, CI_type="reliability", CI=CI, x=CI_x
+                    )
+                    if func == "SF":
+                        lower, upper = SF_rel[1], SF_rel[0]
+                    elif func == "CDF":
+                        lower, upper = 1 - SF_rel[0], 1 - SF_rel[1]
+                    elif func == "CHF":
+                        lower, upper = -np.log(SF_rel[0]), -np.log(SF_rel[1])
+            elif dist.name == "Lognormal":
+                if CI_type == "time":
+                    SF_time = distribution_confidence_intervals.lognormal_CI(
+                        self=dist, CI_type="time", CI=CI, q=q
+                    )
+                    lower, upper = SF_time[0], SF_time[1]
+                elif CI_type == "reliability":
+                    SF_rel = distribution_confidence_intervals.lognormal_CI(
+                        self=dist, CI_type="reliability", CI=CI, x=CI_x
+                    )
+                    if func == "SF":
+                        lower, upper = SF_rel[1], SF_rel[0]
+                    elif func == "CDF":
+                        lower, upper = 1 - SF_rel[0], 1 - SF_rel[1]
+                    elif func == "CHF":
+                        lower, upper = -np.log(SF_rel[0]), -np.log(SF_rel[1])
+            elif dist.name == "Gamma":
+                if CI_type == "time":
+                    SF_time = distribution_confidence_intervals.gamma_CI(
+                        self=dist, CI_type="time", CI=CI, q=q
+                    )
+                    lower, upper = SF_time[0], SF_time[1]
+                elif CI_type == "reliability":
+                    SF_rel = distribution_confidence_intervals.gamma_CI(
+                        self=dist, CI_type="reliability", CI=CI, x=CI_x
+                    )
+                    if func == "SF":
+                        lower, upper = SF_rel[0], SF_rel[1]
+                    elif func == "CDF":
+                        lower, upper = 1 - SF_rel[1], 1 - SF_rel[0]
+                    elif func == "CHF":
+                        lower, upper = -np.log(SF_rel[1]), -np.log(SF_rel[0])
+            elif dist.name == "Gumbel":
+                if CI_type == "time":
+                    SF_time = distribution_confidence_intervals.gumbel_CI(
+                        self=dist, CI_type="time", CI=CI, q=q
+                    )
+                    lower, upper = SF_time[0], SF_time[1]
+                elif CI_type == "reliability":
+                    SF_rel = distribution_confidence_intervals.gumbel_CI(
+                        self=dist, CI_type="reliability", CI=CI, x=CI_x
+                    )
+                    if func == "SF":
+                        lower, upper = SF_rel[0], SF_rel[1]
+                    elif func == "CDF":
+                        lower, upper = 1 - SF_rel[1], 1 - SF_rel[0]
+                    elif func == "CHF":
+                        lower, upper = -np.log(SF_rel[1]), -np.log(SF_rel[0])
+            elif dist.name == "Loglogistic":
+                if CI_type == "time":
+                    SF_time = distribution_confidence_intervals.loglogistic_CI(
+                        self=dist, CI_type="time", CI=CI, q=q
+                    )
+                    lower, upper = SF_time[0], SF_time[1]
+                elif CI_type == "reliability":
+                    SF_rel = distribution_confidence_intervals.loglogistic_CI(
+                        self=dist, CI_type="reliability", CI=CI, x=CI_x
+                    )
+                    if func == "SF":
+                        lower, upper = SF_rel[0], SF_rel[1]
+                    elif func == "CDF":
+                        lower, upper = 1 - SF_rel[1], 1 - SF_rel[0]
+                    elif func == "CHF":
+                        lower, upper = -np.log(SF_rel[1]), -np.log(SF_rel[0])
+            else:
+                raise ValueError("Unknown distribution")
+        else:
+            lower, upper = None, None
+    if type(lower) is not type(None):
+        if len(lower) == 1:  # unpack arrays of length 1
+            lower, upper = lower[0], upper[0]
+    return lower, upper
+
+
+def unpack_single_arrays(array):
+    """
+    Unpacks arrays with a single element to return just that element
+
+    Parameters
+    ----------
+    array : float, int, list, array
+        The value for unpacking
+
+    Returns
+    -------
+    output : float, list, int, array
+        If the input was a single length numpy array then the output will be the
+        item from the array. If the input was anything else then the output will
+        match the input
+    """
+    if type(array) == np.ndarray:
+        if len(array) == 1:
+            out = array[0]
+        else:
+            out = array
+    else:
+        out = array
+    return out

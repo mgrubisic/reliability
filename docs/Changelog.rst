@@ -5,14 +5,64 @@
 Changelog
 ---------
 
-**Version: 0.7.0 --- Currently unreleased --- scheduled for release by early October 2021**
-'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+**Version: 0.8.0 --- Released: 09 Jan 2022**
+''''''''''''''''''''''''''''''''''''''''''''
 
 **Summary of changes**
 
--    Version 0.7.0 has a few really useful enhancements. The first of these is the addition of three of the special models (mixture, competing risks, defective subpopulation) to the Fit_Everything function.
-     The second major enhancement is faster plotting for large datasets using downsampling.
-     There are also numerous bug fixes that resolve several longstanding minor issues as well as some minor changes that make some of the algorithms more reliable.
+The major changes in this release include enabling confidence bounds to be extracted programatically from the distribution object, and a complete rewrite of the reliability_growth function.
+There are also several minor changes, mainly to the documentation and a minor bugfix.
+
+**New features**
+
+-    Extracting confidence bounds on CDF, SF, and CHF for bounds on time or bounds on reliability can now be done directly from the distribution object that is created by the fitter, as shown `here <https://reliability.readthedocs.io/en/latest/Working%20with%20fitted%20distributions.html>`_. This required a large number of functions to be modified and resulted in several API changes (see below).
+-    Repairable_systems.reliability growth has been completely rewritten. This function now includes both the Duane and Crow-AMSAA reliability growth models. The parametrisation of the Duane model has been modified to match what reliasoft uses.
+-    New dataset called system_growth has been added to the Datasets module.
+
+**API Changes**
+
+-    Repairable_systems.reliability growth has been completely rewritten, so the inputs and outputs are completely different. The old version of the Duane model has been replaced without deprecation. Users needing to use the old version should use v0.7.1 of reliability.
+-    All references to percentiles have now been replaced by quantiles. Note that the previous percentiles argument in the Fitters mandated values between 0 and 100. The quantiles argument mandates values between 0 and 1. They are otherwise the same, just a factor of 100 different. This has been changed without deprecation, so it may cause your code to break if you are using the percentiles argument. This change was made for simplicity, since the plots show quantiles so there was no real need to have a new argument for the same thing multiplied by 100.
+-    The subfunctions (.CDF(), .SF(), .CHF()) for each Distribution (that has confidence intervals) now have all relevant arguments visible as args rather than kwargs. This refers to plot_CI, CI_type, CI, CI_y, CI_x. Previously plot_CI, CI_type, and CI were kwargs so your IDE would not show you these. They have been converted to args for ease of use. The arguments CI_x and CI_y are new, and are used to extract the confidence bounds from the plot of a fitted distribution object.
+
+**Bug Fixes**
+
+-    The ALT life stress plots for dual stress models now plot the scatter plot above the surface plot. This is enabled from matplotlib 3.5.0 onwards using the new parameter computed_zorder which respects the zorder specified rather than always plotting surfaces above scatter points.
+
+**Other**
+
+-    Improvements to the API documentation for Convert_data, Datasets, PoF, and Utils modules. This has been a long term body of work to reformat the documentation, and it is finally complete.
+-    The required version of matplotlib has been upgraded to 3.5.0 to enable the above bugfix for the computed_zorder in ALT life stress plots.
+-    Theory documents are finished for `censored data <https://reliability.readthedocs.io/en/latest/What%20is%20censored%20data.html>`_, `plotting positions <https://reliability.readthedocs.io/en/latest/How%20are%20the%20plotting%20positions%20calculated.html>`_, `Least Squares Estimation <https://reliability.readthedocs.io/en/latest/How%20does%20Least%20Squares%20Estimation%20work.html>`_, `Maximum Likelihood Estimation <https://reliability.readthedocs.io/en/latest/How%20does%20Maximum%20Likelihood%20Estimation%20work.html>`_, and `Confidence Intervals <https://reliability.readthedocs.io/en/latest/How%20are%20the%20confidence%20intervals%20calculated.html>`_.
+-    Updates pytests for new reliability_growth function.
+-    New document on `working with fitted distributions <https://reliability.readthedocs.io/en/latest/Working%20with%20fitted%20distributions.html>`_.
+-    Added several new utils functions including, distributions_input_checking, extract_CIs, unpack_single_arrays
+-    Within the Distributions module, the returns from each PDF, CDF, SF, HF, CHF, quantile, inverse_SF function will automatically unpack arrays of length 1. This means that if given an array of length 1 as input, you will now get a float instead of an array as output. This makes it easier for users to avoid the need to manually unpack single values for later use.
+-    Updated API documentation for Distributions to reflect the numerous changes to the inputs and outputs.
+
+**Version: 0.7.1 --- Released: 26 Oct 2021**
+''''''''''''''''''''''''''''''''''''''''''''
+
+**Summary of changes**
+
+This is primarily a bugfix release to deal with some minor bugs.
+
+**Bug Fixes**
+
+-    Other_functions.crosshairs returned the labels as a float which resulted in numbers like 10.0 rather than 10 when decimals=0. The labels are now converted to int when decimals=0 so they will indeed return zero decimals when told to.
+-    PP_plot_parametric, PP_plot_semiparametric, QQ_plot_parametric, and QQ_plot_semiparametric all had a bug that would cause complete failure. This bug was caused by incorporating an argument that didn't exist. Further details in `this issue <https://github.com/MatthewReid854/reliability/issues/23>`_.
+
+**Other**
+
+-    Added a documentation section (Reliability Theory) which explains how some important algorithms work.
+-    Made Fit_Everything more tolerant of different names to exclude distributions. For example to exclude the Weibull_CR model, users may type "Weibull_CR", "CR", "Weibull_Competing_Risks", "Competing Risks" and many more variations.
+
+**Version: 0.7.0 --- Released: 8 Oct 2021**
+'''''''''''''''''''''''''''''''''''''''''''
+
+**Summary of changes**
+
+Version 0.7.0 has a few really useful enhancements. The first of these is the addition of three of the special models (mixture, competing risks, defective subpopulation) to the Fit_Everything function. The second major enhancement is faster plotting for large datasets using downsampling. There are also numerous bug fixes that resolve several longstanding minor issues as well as some minor changes that make some of the algorithms more reliable.
 
 **New features**
 
@@ -37,16 +87,15 @@ Changelog
 **Other**
 
 -    Changed the method used by curve_fit within least_squares. Previously was 'dogleg' which was very slow. Changed to 'trf'. This significantly speeds up the location shifted distributions (Weibull_3P, etc.)
--    Changed the group splitting algorithm used in Fit_Weibull_Mixture and Fit_Weibull_CR. The new method is more robust and provides better a better initial guess of the parameters for MLE.
+-    Changed the group splitting algorithm used in Fit_Weibull_Mixture and Fit_Weibull_CR. The new method is more robust and provides a better initial guess of the parameters for MLE.
+-    Completed the reformatting of the API docs for all the ALT_Fitters. Still need to do this for the Convert_data, Datasets, PoF, Utils modules. Reformatted API docs for these remaining modules will be part of a future release.
 
 **Version: 0.6.0 --- Released: 23 July 2021**
 '''''''''''''''''''''''''''''''''''''''''''''
 
 **Summary of changes**
 
--    Version 0.6.0 has two main improvements. Firstly the behaviour of the optimizers has been changed to be more efficient, and to allow users to try multiple optimizers easily by specifying optimizer='best'.
-     Secondly, the addition of the Defective Subpopulation (DS) and Zero Inflated (ZI) Model now provides a model for which the CDF can range from above 0 to below 1.
-     There are several new Fitters added to take advantage of this as detailed below.
+Version 0.6.0 has two main improvements. Firstly the behaviour of the optimizers has been changed to be more efficient, and to allow users to try multiple optimizers easily by specifying optimizer='best'. Secondly, the addition of the Defective Subpopulation (DS) and Zero Inflated (ZI) Model now provides a model for which the CDF can range from above 0 to below 1. There are several new Fitters added to take advantage of this as detailed below.
 
 **New features**
 
