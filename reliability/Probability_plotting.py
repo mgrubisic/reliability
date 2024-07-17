@@ -53,7 +53,7 @@ from reliability.Distributions import (
 from reliability.Nonparametric import KaplanMeier, NelsonAalen, RankAdjustment
 from reliability.Utils import (
     axes_transforms,
-    round_to_decimals,
+    round_and_string,
     probability_plot_xylims,
     probability_plot_xyticks,
     colorprint,
@@ -64,7 +64,7 @@ np.seterr("ignore")
 dec = 3  # number of decimals to use when rounding fitted parameters in labels
 
 
-def plotting_positions(failures=None, right_censored=None, a=None):
+def plotting_positions(failures=None, right_censored=None, a=None, sort=False):
     """
     Calculates the plotting positions for plotting on probability paper.
 
@@ -81,6 +81,8 @@ def plotting_positions(failures=None, right_censored=None, a=None):
         (same as the default in Minitab and Reliasoft). Must be in the range 0
         to 1. For more heuristics, see:
         https://en.wikipedia.org/wiki/Q%E2%80%93Q_plot#Heuristics
+    sort : bool, optional
+        Whether the output should be sorted. Default is False.
 
     Returns
     -------
@@ -91,8 +93,7 @@ def plotting_positions(failures=None, right_censored=None, a=None):
 
     Notes
     -----
-    This function is primarily used by the probability plotting functions. The
-    order of the input data is preserved (not sorted).
+    This function is primarily used by the probability plotting functions.
     """
 
     # error checking the input
@@ -114,6 +115,9 @@ def plotting_positions(failures=None, right_censored=None, a=None):
         raise ValueError(
             "a must be in the range 0 to 1. Default is 0.3 which gives the median rank. For more information see https://en.wikipedia.org/wiki/Q%E2%80%93Q_plot#Heuristics"
         )
+
+    if sort not in [True,False]:
+        raise ValueError('sort must be True or False. Default is False to keep the same order as the input.')
 
     # construct the dataframe for the rank adjustment method
     f_codes = np.ones_like(f)
@@ -150,14 +154,18 @@ def plotting_positions(failures=None, right_censored=None, a=None):
     for i in adjusted_rank:
         F.append((i - a) / (n + 1 - 2 * a))
 
-    # restore the original order of the points using the index from the sorted dataframe
-    idx = failure_rows.index.values
-    df2 = pd.DataFrame(
-        data={"x": failure_rows.times.values, "y": F, "idx": idx},
-        columns=["x", "y", "idx"],
-    ).sort_values(by="idx")
-    x = df2.x.values
-    y = df2.y.values
+    if sort is False:
+        # restore the original order of the points using the index from the sorted dataframe
+        idx = failure_rows.index.values
+        df2 = pd.DataFrame(
+            data={"x": failure_rows.times.values, "y": F, "idx": idx},
+            columns=["x", "y", "idx"],
+        ).sort_values(by="idx")
+        x = df2.x.values
+        y = df2.y.values
+    else:
+        x = failure_rows.times.values
+        y = F
     return x, y
 
 
@@ -301,9 +309,9 @@ def Weibull_probability_plot(
             else:
                 label = str(
                     "Fitted Weibull_2P (α="
-                    + str(round_to_decimals(alpha, dec))
+                    + round_and_string(alpha, dec)
                     + ", β="
-                    + str(round_to_decimals(beta, dec))
+                    + round_and_string(beta, dec)
                     + ")"
                 )
         elif fit_gamma is True:
@@ -336,11 +344,11 @@ def Weibull_probability_plot(
             else:
                 label = str(
                     "Fitted Weibull_3P\n(α="
-                    + str(round_to_decimals(alpha, dec))
+                    + round_and_string(alpha, dec)
                     + ", β="
-                    + str(round_to_decimals(beta, dec))
+                    + round_and_string(beta, dec)
                     + ", γ="
-                    + str(round_to_decimals(gamma, dec))
+                    + round_and_string(gamma, dec)
                     + ")"
                 )
 
@@ -370,8 +378,8 @@ def Weibull_probability_plot(
         functions=(axes_transforms.weibull_forward, axes_transforms.weibull_inverse),
     )
     plt.xscale("log")
-    plt.grid(b=True, which="major", color="k", alpha=0.3, linestyle="-")
-    plt.grid(b=True, which="minor", color="k", alpha=0.08, linestyle="-")
+    plt.grid(visible=True, which="major", color="k", alpha=0.3, linestyle="-")
+    plt.grid(visible=True, which="minor", color="k", alpha=0.08, linestyle="-")
     # adjust the figsize. This is done outside of figure creation so that layering of multiple plots is possible
     plt.gcf().set_size_inches(9, 9)
     if show_fitted_distribution is True:
@@ -528,9 +536,9 @@ def Loglogistic_probability_plot(
             else:
                 label = str(
                     "Fitted Loglogistic_2P (α="
-                    + str(round_to_decimals(alpha, dec))
+                    + round_and_string(alpha, dec)
                     + ", β="
-                    + str(round_to_decimals(beta, dec))
+                    + round_and_string(beta, dec)
                     + ")"
                 )
         elif fit_gamma is True:
@@ -563,11 +571,11 @@ def Loglogistic_probability_plot(
             else:
                 label = str(
                     "Fitted Loglogistic_3P\n(α="
-                    + str(round_to_decimals(alpha, dec))
+                    + round_and_string(alpha, dec)
                     + ", β="
-                    + str(round_to_decimals(beta, dec))
+                    + round_and_string(beta, dec)
                     + ", γ="
-                    + str(round_to_decimals(gamma, dec))
+                    + round_and_string(gamma, dec)
                     + ")"
                 )
             xlabel = "Time - gamma"
@@ -599,8 +607,8 @@ def Loglogistic_probability_plot(
         ),
     )
     plt.xscale("log")
-    plt.grid(b=True, which="major", color="k", alpha=0.3, linestyle="-")
-    plt.grid(b=True, which="minor", color="k", alpha=0.08, linestyle="-")
+    plt.grid(visible=True, which="major", color="k", alpha=0.3, linestyle="-")
+    plt.grid(visible=True, which="minor", color="k", alpha=0.08, linestyle="-")
     plt.gcf().set_size_inches(
         9, 9
     )  # adjust the figsize. This is done outside of figure creation so that layering of multiple plots is possible
@@ -757,7 +765,7 @@ def Exponential_probability_plot_Weibull_Scale(
             else:
                 label = str(
                     "Fitted Exponential_1P (λ="
-                    + str(round_to_decimals(Lambda, dec))
+                    + round_and_string(Lambda, dec)
                     + ")"
                 )
         elif fit_gamma is True:
@@ -784,9 +792,9 @@ def Exponential_probability_plot_Weibull_Scale(
             else:
                 label = str(
                     "Fitted Exponential_2P\n(λ="
-                    + str(round_to_decimals(Lambda, dec))
+                    + round_and_string(Lambda, dec)
                     + ", γ="
-                    + str(round_to_decimals(gamma, dec))
+                    + round_and_string(gamma, dec)
                     + ")"
                 )
             xlabel = "Time - gamma"
@@ -812,8 +820,8 @@ def Exponential_probability_plot_Weibull_Scale(
         functions=(axes_transforms.weibull_forward, axes_transforms.weibull_inverse),
     )
     plt.xscale("log")
-    plt.grid(b=True, which="major", color="k", alpha=0.3, linestyle="-")
-    plt.grid(b=True, which="minor", color="k", alpha=0.08, linestyle="-")
+    plt.grid(visible=True, which="major", color="k", alpha=0.3, linestyle="-")
+    plt.grid(visible=True, which="minor", color="k", alpha=0.08, linestyle="-")
     plt.gcf().set_size_inches(
         9, 9
     )  # adjust the figsize. This is done outside of figure creation so that layering of multiple plots is possible
@@ -953,9 +961,9 @@ def Gumbel_probability_plot(
         else:
             label = str(
                 "Fitted Gumbel_2P (μ="
-                + str(round_to_decimals(mu, dec))
+                + round_and_string(mu, dec)
                 + ", σ="
-                + str(round_to_decimals(sigma, dec))
+                + round_and_string(sigma, dec)
                 + ")"
             )
         gbf = Gumbel_Distribution(
@@ -978,8 +986,8 @@ def Gumbel_probability_plot(
         "function",
         functions=(axes_transforms.gumbel_forward, axes_transforms.gumbel_inverse),
     )
-    plt.grid(b=True, which="major", color="k", alpha=0.3, linestyle="-")
-    plt.grid(b=True, which="minor", color="k", alpha=0.08, linestyle="-")
+    plt.grid(visible=True, which="major", color="k", alpha=0.3, linestyle="-")
+    plt.grid(visible=True, which="minor", color="k", alpha=0.08, linestyle="-")
     plt.gcf().set_size_inches(
         9, 9
     )  # adjust the figsize. This is done outside of figure creation so that layering of multiple plots is possible
@@ -1116,9 +1124,9 @@ def Normal_probability_plot(
         else:
             label = str(
                 "Fitted Normal_2P (μ="
-                + str(round_to_decimals(mu, dec))
+                + round_and_string(mu, dec)
                 + ", σ="
-                + str(round_to_decimals(sigma, dec))
+                + round_and_string(sigma, dec)
                 + ")"
             )
         nf = Normal_Distribution(
@@ -1142,8 +1150,8 @@ def Normal_probability_plot(
         "function",
         functions=(axes_transforms.normal_forward, axes_transforms.normal_inverse),
     )
-    plt.grid(b=True, which="major", color="k", alpha=0.3, linestyle="-")
-    plt.grid(b=True, which="minor", color="k", alpha=0.08, linestyle="-")
+    plt.grid(visible=True, which="major", color="k", alpha=0.3, linestyle="-")
+    plt.grid(visible=True, which="minor", color="k", alpha=0.08, linestyle="-")
     plt.gcf().set_size_inches(
         9, 9
     )  # adjust the figsize. This is done outside of figure creation so that layering of multiple plots is possible
@@ -1298,9 +1306,9 @@ def Lognormal_probability_plot(
             else:
                 label = str(
                     "Fitted Lognormal_2P (μ="
-                    + str(round_to_decimals(mu, dec))
+                    + round_and_string(mu, dec)
                     + ", σ="
-                    + str(round_to_decimals(sigma, dec))
+                    + round_and_string(sigma, dec)
                     + ")"
                 )
         elif fit_gamma is True:
@@ -1331,11 +1339,11 @@ def Lognormal_probability_plot(
             else:
                 label = str(
                     "Fitted Lognormal_3P (μ="
-                    + str(round_to_decimals(mu, dec))
+                    + round_and_string(mu, dec)
                     + ", σ="
-                    + str(round_to_decimals(sigma, dec))
+                    + round_and_string(sigma, dec)
                     + ", γ="
-                    + str(round_to_decimals(gamma, dec))
+                    + round_and_string(gamma, dec)
                     + ")"
                 )
             xlabel = "Time - gamma"
@@ -1364,8 +1372,8 @@ def Lognormal_probability_plot(
         functions=(axes_transforms.normal_forward, axes_transforms.normal_inverse),
     )
     plt.xscale("log")
-    plt.grid(b=True, which="major", color="k", alpha=0.3, linestyle="-")
-    plt.grid(b=True, which="minor", color="k", alpha=0.08, linestyle="-")
+    plt.grid(visible=True, which="major", color="k", alpha=0.3, linestyle="-")
+    plt.grid(visible=True, which="minor", color="k", alpha=0.08, linestyle="-")
     plt.gcf().set_size_inches(
         9, 9
     )  # adjust the figsize. This is done outside of figure creation so that layering of multiple plots is possible
@@ -1497,9 +1505,9 @@ def Beta_probability_plot(
     else:
         label = str(
             "Fitted Beta_2P (α="
-            + str(round_to_decimals(alpha, dec))
+            + round_and_string(alpha, dec)
             + ", β="
-            + str(round_to_decimals(beta, dec))
+            + round_and_string(beta, dec)
             + ")"
         )
     bf = Beta_Distribution(
@@ -1508,8 +1516,8 @@ def Beta_probability_plot(
     )
 
     x, y = plotting_positions(failures=failures, right_censored=right_censored, a=a)
-    plt.grid(b=True, which="major", color="k", alpha=0.3, linestyle="-")
-    plt.grid(b=True, which="minor", color="k", alpha=0.08, linestyle="-")
+    plt.grid(visible=True, which="major", color="k", alpha=0.3, linestyle="-")
+    plt.grid(visible=True, which="minor", color="k", alpha=0.08, linestyle="-")
     if show_scatter_points is True:
         x_scatter, y_scatter = xy_downsample(
             x, y, downsample_factor=downsample_scatterplot
@@ -1686,9 +1694,9 @@ def Gamma_probability_plot(
         else:
             label = str(
                 "Fitted Gamma_2P (α="
-                + str(round_to_decimals(alpha, dec))
+                + round_and_string(alpha, dec)
                 + ", β="
-                + str(round_to_decimals(beta, dec))
+                + round_and_string(beta, dec)
                 + ")"
             )
     elif fit_gamma is True:
@@ -1724,11 +1732,11 @@ def Gamma_probability_plot(
         else:
             label = str(
                 "Fitted Gamma_3P\n(α="
-                + str(round_to_decimals(alpha, dec))
+                + round_and_string(alpha, dec)
                 + ", β="
-                + str(round_to_decimals(beta, dec))
+                + round_and_string(beta, dec)
                 + ", γ="
-                + str(round_to_decimals(gamma, dec))
+                + round_and_string(gamma, dec)
                 + ")"
             )
         xlabel = "Time - gamma"
@@ -1757,8 +1765,8 @@ def Gamma_probability_plot(
     f_gamma = lambda x: axes_transforms.gamma_forward(x, beta)
     fi_gamma = lambda x: axes_transforms.gamma_inverse(x, beta)
     plt.gca().set_yscale("function", functions=(f_gamma, fi_gamma))
-    plt.grid(b=True, which="major", color="k", alpha=0.3, linestyle="-")
-    plt.grid(b=True, which="minor", color="k", alpha=0.08, linestyle="-")
+    plt.grid(visible=True, which="major", color="k", alpha=0.3, linestyle="-")
+    plt.grid(visible=True, which="minor", color="k", alpha=0.08, linestyle="-")
     plt.gcf().set_size_inches(
         9, 9
     )  # adjust the figsize. This is done outside of figure creation so that layering of multiple plots is possible
@@ -1911,7 +1919,7 @@ def Exponential_probability_plot(
             else:
                 label = str(
                     "Fitted Exponential_1P (λ="
-                    + str(round_to_decimals(Lambda, dec))
+                    + round_and_string(Lambda, dec)
                     + ")"
                 )
         elif fit_gamma is True:
@@ -1937,9 +1945,9 @@ def Exponential_probability_plot(
             else:
                 label = str(
                     "Fitted Exponential_2P\n(λ="
-                    + str(round_to_decimals(Lambda, dec))
+                    + round_and_string(Lambda, dec)
                     + ", γ="
-                    + str(round_to_decimals(gamma, dec))
+                    + round_and_string(gamma, dec)
                     + ")"
                 )
             xlabel = "Time - gamma"
@@ -1961,8 +1969,8 @@ def Exponential_probability_plot(
             axes_transforms.exponential_inverse,
         ),
     )
-    plt.grid(b=True, which="major", color="k", alpha=0.3, linestyle="-")
-    plt.grid(b=True, which="minor", color="k", alpha=0.08, linestyle="-")
+    plt.grid(visible=True, which="major", color="k", alpha=0.3, linestyle="-")
+    plt.grid(visible=True, which="minor", color="k", alpha=0.08, linestyle="-")
     plt.gcf().set_size_inches(
         9, 9
     )  # adjust the figsize. This is done outside of figure creation so that layering of multiple plots is possible

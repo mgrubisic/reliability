@@ -92,6 +92,7 @@ Contents:
   Reliability test duration
   Chi-squared test
   Kolmogorov-Smirnov test
+  Likelihood plot
 
 .. toctree::
   :maxdepth: 1
@@ -163,10 +164,10 @@ Contents:
     :scale: 100%
     :target: https://github.com/MatthewReid854/reliability/actions
 
-.. |code quality| image:: https://img.shields.io/lgtm/grade/python/g/MatthewReid854/reliability.svg?logo=lgtm&logoWidth=18
-    :alt: code quality: python
+.. |code quality| image:: https://github.com/MatthewReid854/reliability/workflows/CodeQL/badge.svg
+    :alt: CodeQL
     :scale: 100%
-    :target: https://lgtm.com/projects/g/MatthewReid854/reliability/context:python
+    :target: https://github.com/MatthewReid854/reliability/actions
 
 .. |LOC| image:: https://sloc.xyz/github/MatthewReid854/reliability/?category=code
     :alt: lines of code

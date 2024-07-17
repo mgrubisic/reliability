@@ -381,7 +381,7 @@ def test_Fit_Everything_ALT_single_stress():
     assert_allclose(model.Normal_Exponential_loglik, -1947.9434991429694, rtol=rtol, atol=atol)
 
     assert_allclose(model.Exponential_Exponential_a, 1990.2598136542852, rtol=rtol, atol=atol)
-    assert_allclose(model.Exponential_Exponential_b, 9.884663513057722, rtol=rtol, atol=atol)
+    assert_allclose(model.Exponential_Exponential_b, 9.884663513057722, rtol=rtol_big, atol=atol)
     assert_allclose(model.Exponential_Exponential_AICc, 3926.5330483709013, rtol=rtol, atol=atol)
     assert_allclose(model.Exponential_Exponential_BIC, 3933.9002092798096, rtol=rtol, atol=atol)
     assert_allclose(model.Exponential_Exponential_loglik, -1961.2463221652486, rtol=rtol, atol=atol)
@@ -420,14 +420,14 @@ def test_Fit_Everything_ALT_single_stress():
     assert_allclose(model.Weibull_Power_BIC, 3726.235798703828, rtol=rtol, atol=atol)
     assert_allclose(model.Weibull_Power_loglik, -1854.5622256399297, rtol=rtol, atol=atol)
 
-    assert_allclose(model.Lognormal_Power_a, 2899022021518504.5, rtol=rtol_big, atol=atol) # larger due to variation in python versions
+    assert_allclose(model.Lognormal_Power_a, 2899022021518504.5, rtol=rtol_extreme, atol=atol) # much larger due to variation in python versions
     assert_allclose(model.Lognormal_Power_n, -4.752882880383393, rtol=rtol_big, atol=atol)  # larger due to variation in python versions
     assert_allclose(model.Lognormal_Power_sigma, 0.522183419683184, rtol=rtol, atol=atol)
     assert_allclose(model.Lognormal_Power_AICc, 3740.5903647388977, rtol=rtol, atol=atol)
     assert_allclose(model.Lognormal_Power_BIC, 3751.620631081785, rtol=rtol, atol=atol)
     assert_allclose(model.Lognormal_Power_loglik, -1867.2546418289082, rtol=rtol, atol=atol)
 
-    assert_allclose(model.Normal_Power_a, 1.1875960546823156e+16, rtol=rtol_big, atol=atol)  # larger due to variation in python versions
+    assert_allclose(model.Normal_Power_a, 1.1875960546823156e+16, rtol=rtol_extreme, atol=atol)  # much larger due to variation in python versions
     assert_allclose(model.Normal_Power_n, -4.968632318615027, rtol=rtol_big, atol=atol) # larger due to variation in python versions
     assert_allclose(model.Normal_Power_sigma, 751.4081379265706, rtol=rtol, atol=atol)
     assert_allclose(model.Normal_Power_AICc, 3905.4226589659943, rtol=rtol, atol=atol)

@@ -35,9 +35,11 @@ from reliability.Distributions import (
     Beta_Distribution,
     Loglogistic_Distribution,
     Gumbel_Distribution,
+    Mixture_Model,
+    Competing_Risks_Model,
 )
 from reliability.Fitters import Fit_Everything
-from reliability.Utils import colorprint, round_to_decimals
+from reliability.Utils import colorprint, round_and_string
 from matplotlib.widgets import Slider, RadioButtons
 import scipy.stats as ss
 import time
@@ -63,9 +65,9 @@ def stress_strength(stress, strength, show_plot=True, print_results=True, warn=T
     warn : bool, optional
         A warning will be issued if both stress and strength are Normal as you
         should use stress_strength_normal. You can supress this using warn=False
-        A warning will be issued if the stress.mean > strength.mean as the user
+        A warning will be issued if the median stress > median strength as the user
         may have assigned the distributions to the wrong variables. You can
-        supress this using warn=False. Default = True
+        supress this using warn=False. Default = True.
 
     Returns
     -------
@@ -82,6 +84,9 @@ def stress_strength(stress, strength, show_plot=True, print_results=True, warn=T
         stress = Weibull_Distribution(alpha=2,beta=3,gamma=1)
         strength = Gamma_Distribution(alpha=2,beta=3,gamma=3)
         stress_strength(stress=stress, strength=strength)
+
+    A warning will be issued if probability_of_failure > 1. This can occur when
+    one of the distributions asymptotes. This warning can not be supressed.
     """
 
     if type(stress) not in [
@@ -93,6 +98,8 @@ def stress_strength(stress, strength, show_plot=True, print_results=True, warn=T
         Beta_Distribution,
         Loglogistic_Distribution,
         Gumbel_Distribution,
+        Mixture_Model,
+        Competing_Risks_Model,
     ] or type(strength) not in [
         Weibull_Distribution,
         Normal_Distribution,
@@ -102,6 +109,8 @@ def stress_strength(stress, strength, show_plot=True, print_results=True, warn=T
         Beta_Distribution,
         Loglogistic_Distribution,
         Gumbel_Distribution,
+        Mixture_Model,
+        Competing_Risks_Model,
     ]:
         raise ValueError(
             "Stress and Strength must both be probability distributions. First define the distribution using reliability.Distributions.___"
@@ -115,88 +124,129 @@ def stress_strength(stress, strength, show_plot=True, print_results=True, warn=T
             "WARNING: If strength and stress are both Normal distributions, it is more accurate to use the exact formula. The exact formula is supported in the function stress_strength_normal. To supress this warning set warn=False",
             text_color="red",
         )
-    if stress.mean > strength.mean and warn == True:
+    if stress.quantile(0.5) > strength.quantile(0.5) and warn is True:
         colorprint(
             "WARNING: The mean of the stress distribution is above the mean of the strength distribution. Please check you have assigned stress and strength to the correct variables. To supress this warning set warn=False",
             text_color="red",
         )
 
+    trapezoids = 1000000  # the number of trapezoids used in the integration
     x = np.linspace(
         min(stress.quantile(1e-8), strength.quantile(1e-8)),
         max(strength.quantile(1 - 1e-8), stress.quantile(1 - 1e-8)),
-        1000,
+        trapezoids,
     )  # we take the min and max here since there may be cases when stress > strength
+
     prob_of_failure = np.trapz(
         strength.PDF(x, show_plot=False) * stress.SF(x, show_plot=False), x
     )
+    if prob_of_failure > 1:
+        colorprint(
+            "WARNING: The probability of failure is wrong. One of the distributions likely has an asymptote where the values along the y-axis approach infinity which has caused the integration to fail. There is no solution to this other than to use a distribution that does not have an asymptote.",
+            text_color="red",
+        )
 
     if show_plot is True:
         xlims = plt.xlim(auto=None)
-        xmin = stress.quantile(0.00001)
-        xmax = strength.quantile(0.99999)
+
+        # the plotting range is 5 times the difference of the means from each mean. This limits extreme quantiles.
+        diff = abs(strength.quantile(0.5) - stress.quantile(0.5))
+        xmin = min(strength.quantile(0.5), stress.quantile(0.5)) - 5 * diff
+        xmax = max(strength.quantile(0.5), stress.quantile(0.5)) + 5 * diff
+
+        if xmin < 0 and type(strength) not in [
+            Normal_Distribution,
+            Gumbel_Distribution,
+        ]:
+            xmin = 0  # fix negative xmin if we're not dealing with Normal and Gumbel
+
         if abs(xmin) < (xmax - xmin) / 4:
             xmin = 0  # if the lower bound on xmin is near zero (relative to the entire range) then just make it zero
-        if type(stress) == Beta_Distribution:
+
+        if type(stress) == Beta_Distribution and stress.quantile(
+            0.5
+        ) < strength.quantile(0.5):
             xmin = 0
-        if type(strength) == Beta_Distribution:
+        if type(strength) == Beta_Distribution and stress.quantile(
+            0.5
+        ) < strength.quantile(0.5):
             xmax = 1
         xvals = np.linspace(xmin, xmax, 10000)
         stress_PDF = stress.PDF(xvals=xvals, show_plot=False)
         strength_PDF = strength.PDF(xvals=xvals, show_plot=False)
-        Y = [
-            (min(strength_PDF[i], stress_PDF[i])) for i in range(len(xvals))
-        ]  # finds the lower of the two lines which is used as the upper boundary for fill_between
         plt.plot(xvals, stress_PDF, label="Stress")
         plt.plot(xvals, strength_PDF, label="Strength")
-        intercept_idx = Y.index(max(Y))
+        mask = stress_PDF > strength_PDF
+
         plt.fill_between(
             xvals,
-            np.zeros_like(xvals),
-            Y,
+            np.minimum(stress_PDF, strength_PDF),
+            0,
             color="salmon",
             alpha=1,
             linewidth=0,
             linestyle="--",
         )
         plt.fill_between(
-            xvals[0:intercept_idx],
-            strength_PDF[0:intercept_idx],
-            stress_PDF[0:intercept_idx],
+            xvals,
+            stress_PDF,
+            strength_PDF,
+            where=mask,
             color="steelblue",
             alpha=0.3,
             linewidth=0,
             linestyle="--",
         )
         plt.fill_between(
-            xvals[intercept_idx::],
-            stress_PDF[intercept_idx::],
-            strength_PDF[intercept_idx::],
+            xvals,
+            stress_PDF,
+            strength_PDF,
+            where=~mask,
             color="darkorange",
             alpha=0.3,
             linewidth=0,
             linestyle="--",
         )
+
         failure_text = str(
-            "Probability of\nfailure = " + str(round_to_decimals(prob_of_failure, 4))
+            "Probability of\nfailure = " + round_and_string(prob_of_failure, 4)
         )
+
         plt.legend(title=failure_text)
         plt.title("Stress - Strength Interference Plot")
         plt.ylabel("Probability Density")
         plt.xlabel("Stress and Strength Units")
         plt.subplots_adjust(left=0.16)
         if xlims != (0, 1):
-            plt.xlim(min(stress.b5, xlims[0]), max(strength.b95, xlims[1]), auto=None)
+            # we take the min of the max for the upper limits to deal with extreme values
+            plt.xlim(
+                min(stress.b5, strength.b5, xlims[0]),
+                min(xmax, max(stress.b95, strength.b95, xlims[1])),
+                auto=None,
+            )
         else:
-            plt.xlim(stress.b5, strength.b95, auto=None)
+            plt.xlim(
+                min(stress.b5, strength.b5),
+                min(xmax, max(stress.b95, strength.b95)),
+                auto=None,
+            )
         plt.ylim(bottom=0, auto=None)
 
     if print_results is True:
+        if type(stress) in [Mixture_Model, Competing_Risks_Model]:
+            param_title_stress = stress.name2
+        else:
+            param_title_stress = stress.param_title_long
+        if type(strength) in [Mixture_Model, Competing_Risks_Model]:
+            param_title_strength = strength.name2
+        else:
+            param_title_strength = strength.param_title_long
         colorprint("Stress - Strength Interference", bold=True, underline=True)
-        print("Stress Distribution:", stress.param_title_long)
-        print("Strength Distribution:", strength.param_title_long)
+        print("Stress Distribution: " + param_title_stress)
+        print("Strength Distribution: " + param_title_strength)
         print(
             "Probability of failure (stress > strength):",
-            round_to_decimals(prob_of_failure * 100),
+            round_and_string(prob_of_failure * 100),
             "%",
         )
 
@@ -253,51 +303,52 @@ def stress_strength_normal(
     sigma_stress = stress.sigma
     mu_stress = stress.mu
     prob_of_failure = ss.norm.cdf(
-        -(mu_strength - mu_stress) / ((sigma_strength ** 2 + sigma_stress ** 2) ** 0.5)
+        -(mu_strength - mu_stress) / ((sigma_strength**2 + sigma_stress**2) ** 0.5)
     )
 
     if show_plot is True:
         xlims = plt.xlim(auto=None)
-        xmin = stress.quantile(0.00001)
-        xmax = strength.quantile(0.99999)
+        xmin = min(stress.quantile(0.00001), strength.quantile(0.00001))
+        xmax = max(stress.quantile(0.99999), strength.quantile(0.99999))
         xvals = np.linspace(xmin, xmax, 1000)
         stress_PDF = stress.PDF(xvals=xvals, show_plot=False)
         strength_PDF = strength.PDF(xvals=xvals, show_plot=False)
         plt.plot(xvals, stress_PDF, label="Stress")
         plt.plot(xvals, strength_PDF, label="Strength")
-        Y = [
-            (min(strength_PDF[i], stress_PDF[i])) for i in range(len(xvals))
-        ]  # finds the lower of the two lines which is used as the upper boundary for fill_between
-        intercept_idx = Y.index(max(Y))
+        mask = stress_PDF > strength_PDF
+
         plt.fill_between(
             xvals,
-            np.zeros_like(xvals),
-            Y,
+            np.minimum(stress_PDF, strength_PDF),
+            0,
             color="salmon",
             alpha=1,
             linewidth=0,
             linestyle="--",
         )
         plt.fill_between(
-            xvals[0:intercept_idx],
-            strength_PDF[0:intercept_idx],
-            stress_PDF[0:intercept_idx],
+            xvals,
+            stress_PDF,
+            strength_PDF,
+            where=mask,
             color="steelblue",
             alpha=0.3,
             linewidth=0,
             linestyle="--",
         )
         plt.fill_between(
-            xvals[intercept_idx::],
-            stress_PDF[intercept_idx::],
-            strength_PDF[intercept_idx::],
+            xvals,
+            stress_PDF,
+            strength_PDF,
+            where=~mask,
             color="darkorange",
             alpha=0.3,
             linewidth=0,
             linestyle="--",
         )
+
         failure_text = str(
-            "Probability of\nfailure = " + str(round_to_decimals(prob_of_failure, 4))
+            "Probability of\nfailure = " + round_and_string(prob_of_failure, 4)
         )
         plt.legend(title=failure_text)
         plt.title("Stress - Strength Interference Plot")
@@ -305,9 +356,15 @@ def stress_strength_normal(
         plt.xlabel("Stress and Strength Units")
         plt.subplots_adjust(left=0.15, right=0.93)
         if xlims != (0, 1):
-            plt.xlim(min(stress.b5, xlims[0]), max(strength.b95, xlims[1]), auto=None)
+            plt.xlim(
+                min(stress.b5, strength.b5, xlims[0]),
+                max(stress.b95, strength.b95, xlims[1]),
+                auto=None,
+            )
         else:
-            plt.xlim(stress.b5, strength.b95, auto=None)
+            plt.xlim(
+                min(stress.b5, strength.b5), max(stress.b95, strength.b95), auto=None
+            )
         plt.ylim(bottom=0, auto=None)
 
     if print_results is True:
@@ -316,7 +373,7 @@ def stress_strength_normal(
         print("Strength Distribution:", strength.param_title_long)
         print(
             "Probability of failure (stress > strength):",
-            round_to_decimals(prob_of_failure * 100),
+            round_and_string(prob_of_failure * 100),
             "%",
         )
 
@@ -1026,7 +1083,6 @@ class make_ALT_data:
         fraction_censored=0.5,
         seed=None,
     ):
-
         # input error checking
         life_stress_model = life_stress_model.title()
         if life_stress_model in ["Exponential", "Eyring", "Power"]:
@@ -1252,7 +1308,6 @@ class crosshairs:
     """
 
     def __init__(self, xlabel=None, ylabel=None, decimals=2, dateformat=None, **kwargs):
-
         if type(dateformat) not in [str, type(None)]:
             raise ValueError(
                 "dateformat type must be str or None. For acceptable strings see https://docs.python.org/3/library/datetime.html#strftime-and-strptime-format-codes"
@@ -1366,12 +1421,12 @@ class crosshairs:
             if decimals == 0:
                 x_string = int(x)
             else:
-                x_string = round_to_decimals(x, decimals)
+                x_string = round_and_string(x, decimals)
 
         if decimals == 0:
             y_string = int(y)
         else:
-            y_string = round_to_decimals(y, decimals)
+            y_string = round_and_string(y, decimals)
 
         texts = [
             ax.text(
@@ -1417,22 +1472,14 @@ class crosshairs:
             if decimals == 0:
                 x_string = int(x)
             else:
-                x_string = round_to_decimals(x, decimals)
+                x_string = round_and_string(x, decimals)
 
         if decimals == 0:
             y_string = int(y)
         else:
-            y_string = round_to_decimals(y, decimals)
+            y_string = round_and_string(y, decimals)
 
-        text = str(
-            label[0]
-            + " = "
-            + str(x_string)
-            + "\n"
-            + label[1]
-            + " = "
-            + str(y_string)
-        )
+        text = str(label[0] + " = " + x_string + "\n" + label[1] + " = " + y_string)
         sel.annotation.set_text(text)
         sel.annotation.get_bbox_patch().set(fc="white")
 

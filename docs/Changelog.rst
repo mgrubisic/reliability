@@ -5,6 +5,170 @@
 Changelog
 ---------
 
+**Version: 0.8.16 --- Released: 27 Dec 2023**
+'''''''''''''''''''''''''''''''''''''''''''''
+
+**Summary of changes**
+
+This is a minor release to fix two bugs. The first bug was in plot legend for PoF.SN_diagram which had the confidence intervals hardcoded to 95%. The legend now reflects the specified CI.
+The second bug was from `this issue <https://github.com/MatthewReid854/reliability/issues/46>`_ where the Lognormal Distribution CDF didn't return a tuple. This is now fixed and aligns with the remainder of the distributions.
+A few broken hyperlinks in the docs have also been fixed.
+
+**Version: 0.8.15 --- Released: 31 Oct 2023**
+'''''''''''''''''''''''''''''''''''''''''''''
+
+**Summary of changes**
+
+This is a minor release to add the ability to use Mixture_Model and Competing_Risks_Model as distributions in Other_functions.stress_strength.
+There is also a minor bugfix to allow Loglogistic distributions with beta<1 to be used. The bug occurred because a text string was created for the mean of a Loglogistic distribution with beta<1 (since there is no mean for such distributions) and the mean was used for a calculation causing an error. The calculation works equally well using the median which does exist for these distributions.
+Thanks to Cole Tenold for raising this `issue <https://github.com/MatthewReid854/reliability/issues/45>`_.
+
+**Version: 0.8.14 --- Released: 07 Oct 2023**
+'''''''''''''''''''''''''''''''''''''''''''''
+
+**Summary of changes**
+
+This is a minor release to fix a bug in Other_functions.stress_strength and Other_functions.stress_strength_normal. The bug occurred when stress was greater than strength causing the integration to fail and return incorrect values for the probability of failure. This has been fixed and the plots are also improved. Thanks to github user ctenold for identifying `this issue <https://github.com/MatthewReid854/reliability/issues/43>`_ and providing a working solution.
+There is also a speed improvement for Fitters.Fit_Weibull_2P_grouped which takes advantage of the np.repeat function to optimize the process of generating the arrays for large datasets of repeating values. Thanks to Tomas Santos for identifying this improvement.
+
+**Version: 0.8.13 --- Released: 02 Sep 2023**
+'''''''''''''''''''''''''''''''''''''''''''''
+
+**Summary of changes**
+
+This is a minor release to fix a bug in the plot of Reliability_testing.chi2test identified in `this issue <https://github.com/MatthewReid854/reliability/issues/41>`_. The normed parameter in numpy.histogram is deprecated and had been replaced by the density parameter.
+
+**Version: 0.8.12 --- Released: 02 Aug 2023**
+'''''''''''''''''''''''''''''''''''''''''''''
+
+**Summary of changes**
+
+This is a minor release to fix a bug in the plot of Nonparametric.RankAdjustment identified in `this issue <https://github.com/MatthewReid854/reliability/issues/40>`_. The values weren't being sorted. This has been fixed by adding an optional 'sort' argument to Probability_plotting.plotting_positions.
+
+**Version: 0.8.11 --- Released: 07 Jul 2023**
+'''''''''''''''''''''''''''''''''''''''''''''
+
+**Summary of changes**
+
+This is a minor release to remove the docutils requirement. There was a `bugfix in docutils and an update to sphinx <https://github.com/sphinx-doc/sphinx/issues/9777>`_ so we no longer need to specify docutils<0.18.
+
+**Version: 0.8.10 --- Released: 15 May 2023**
+'''''''''''''''''''''''''''''''''''''''''''''
+
+**Summary of changes**
+
+This is a bugfix release. 
+
+**Bug Fixes**
+
+-    Requirements needed to be updated. Specifically some changes in pandas 2.0.0 needed to be promulgated to reliability so it is no longer compatible with earlier versions of pandas.
+
+**Version: 0.8.9 --- Released: 23 Apr 2023**
+''''''''''''''''''''''''''''''''''''''''''''
+
+**Summary of changes**
+
+This is a bugfix release. 
+
+**Bug Fixes**
+
+-    There was a bug in Competing Risks and Mixture Models which occurred when the PDF or HF had an asymptote, resulting in an error from matplotlib. Values that are almost inf have been capped to 1e100 to prevent overflow in matplotlib.
+-    A change to the python core across mutliple versions resulted in key value pairs from iterators returning the key as a tuple rather than a float. This only affected ALT Fitters and caused all of them to fail. Within Utils the key float is now extracted from the key tuple to resolve this bug.
+
+**Other**
+
+-    Added PDF and EPUB downloads in readthedocs.
+
+**Version: 0.8.8 --- Released: 21 Feb 2023**
+''''''''''''''''''''''''''''''''''''''''''''
+
+**Summary of changes**
+
+This is a bugfix release. 
+
+**Bug Fixes**
+
+-    API changes in matplotlib which deprecated some keywords and axes classes resulted in two serious bugs being introduced into reliability. This has been fixed and the requirements for matplotlib have been updated to >=3.7.0.
+
+**Version: 0.8.7 --- Released: 28 Jan 2023**
+''''''''''''''''''''''''''''''''''''''''''''
+
+**Summary of changes**
+
+This is primarily a bugfix release, with some minor API changes and new features. 
+
+**New features**
+
+-    Reliability_testing.likelihood_plot is a new function to generate a likelihood plot. See the `documentation <https://reliability.readthedocs.io/en/latest/Likelihood%20plot.html>`_ for more detail.
+
+**API Changes**
+
+-    Utils.round_to_decimals has been replaced by Utils.round_and_string. This function always returns a string and the rounding rules applied are better than before as they apply scientific notation for very large and very small numbers. This was an issue in plot titles and plot text where very large numbers weren't being displayed in scientific notation.
+-    Within Fitters and Distributions that have been created by Fitters, the confidence intervals can be turned off using CI_type='none'. Previously this was CI_type=None which caused some issues with confidence interval inheritance between Fitters and Distributions and an inability to turn them off when called from Distributions.
+-    Utils.life_stress_plot will swap the x and y axes if ax='swap'. This is useful for making a stress-life plot which is similar to an SN_diagram.
+-    All of the ALT_Fitters will now accept show_life_stress_plot='swap' to return a stress-life plot by swapping the axes of the standard life-stress plot.
+
+**Bug Fixes**
+
+-    The axes limits for the histogram plot in Fit_Everything crashed when a left asymptote occurred.
+-    KStest and chi2test now accept Mixture Model, Competing Risks Model, and DSZI model for the distribution.
+-    The line of best fit in life stress plots started at 1. This was a problem for data less than 1. The line of best fit now starts at 0.
+-    When using force_beta with RRX in Fit_Weibull_2P, the beta that is returned is the inverse of force_beta. This only occurred for RRX for Fit_Weibull_2P. Thanks to Github user ctenold for identifying this bug and providing the solution in `this issue <https://github.com/MatthewReid854/reliability/issues/32>`_.
+
+**Other**
+
+-    Added a new textbook to Recommended resources.
+-    The CDF, SF, and CHF methods in Distributions did not include all the parameters in the documentation.
+
+**Version: 0.8.6 --- Released: 06 Aug 2022**
+''''''''''''''''''''''''''''''''''''''''''''
+
+**Summary of changes**
+
+This is primarily a bugfix release to deal with a few minor bugs and a few minor features have been added to make it easier to save figures programatically for later use.
+
+**New features**
+
+-    Fit_Everything and ALT_Fit_Everything now return figure handles for the figures. This behaviour is similar to each of the individual functions in Fitters and ALT_Fitters which return axes handles. This was done to allow the figures to be saved programatically for use later.
+-    A new Utils function reshow_figure will reshow a figure that has been closed. The plot interactivity is lost due to an unresolved `issue <https://stackoverflow.com/questions/73221670/reshow-a-closed-matplotlib-window>`_ with matplotlib, but the function still allows a figure to be reshown from an axes or figure handle.
+
+**API Changes**
+
+-    The returned figure handles from Fit_Everything and ALT_Fit_Everything are available from the results. For example "results.probability_plot" will return the figure handle for the probability plot. The the API reference of `Fit_Everything_ALT <https://reliability.readthedocs.io/en/latest/API/ALT_fitters/Fit_Everything_ALT.html>`_ and `Fit_Everything <https://reliability.readthedocs.io/en/latest/API/Fitters/Fit_Everything.html>`_ for details.
+-    ALT_Fit_Everything now accepts 2 kwargs of failure_stress and right_censored_stress as alternatives to the arguments of failure_stress_1 and right_censored_stress_1. This is used to provide consistency with the other functions in ALT_Fitters which also accept failure_stress and right_censored_stress.
+
+**Bug Fixes**
+
+-    There was a floating point precision error in Distributions.Mixture_Model when the check for sum(proportions) was done. See `this issue <https://github.com/MatthewReid854/reliability/issues/29>`_ for details.
+-    Mixture_Model and Competing_Risks_Model encountered an error when provided with a single value. This was due to two bugs: a type mismatch in the combiner sub function and an inability to iterate a single element array when trying to find the plotting limits if there is only a single value provided (solved by disabling plotting for this case). Thanks to Smita for identifying this bug.
+
+**Other**
+
+-    Minor optimisations to the probability plotting in ALT_Fit_Everything to merge a function that is only used once and did not need to be its own function.
+-    Minor corrections to the docs and fixing a broken link.
+
+**Version: 0.8.5 --- Released: 25 May 2022**
+''''''''''''''''''''''''''''''''''''''''''''
+
+**Summary of changes**
+
+This is bugfix release to deal with a minor bug.
+
+**Bug Fixes**
+
+-    The equation for the Loglogistic Hazard function was wrong. It mistakenly used the equation for the Weibull Hazard Function. Fitted results are unaffected. This bug only affected the plot and numerical outputs of the Loglogistic Hazard Function. Thanks to Kaiya Raby for finding and reporting this bug.
+
+**Version: 0.8.4 --- Released: 05 May 2022**
+''''''''''''''''''''''''''''''''''''''''''''
+
+**Summary of changes**
+
+This is bugfix release to deal with a minor bug.
+
+**Bug Fixes**
+
+-    Weibull Mixture models and Weibull Competing Risks models obtain their initial guesses by splitting the data into two groups and fitting a Weibull distribution to each group. If there are not two distinct groups, the estimate for the dividing line between the two groups may result in one of the groups having fewer than 2 failures allocated to the group. This causes an error when fitting the Weibull distribution to that group. It has been fixed by checking the number of elements in the group and moving the dividing line if required. The dividing line is only an estimate used to obtain the initial guess for the parameters and the dividing line is not used in the final MLE or LS estimates in the fitter.
+
 **Version: 0.8.3 --- Released: 17 Apr 2022**
 ''''''''''''''''''''''''''''''''''''''''''''
 

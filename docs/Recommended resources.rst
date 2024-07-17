@@ -14,6 +14,7 @@ The following collection of resources are things I have found useful during my r
 -    `Probability Distributions Used in Reliability Engineering (2011), by A. O'Conner, M. Modarres, and A. Mosleh. <https://crr.umd.edu/sites/crr.umd.edu/files/Free%20Ebook%20Probability%20Distributions%20Used%20in%20Reliability%20Engineering.pdf>`_
 -    Practical Reliability Engineering, Fifth Edition (2012), by P. O'Conner and A. Kleyner.
 -    Recurrent Events Data Analysis for Product Repairs, Disease Recurrences, and Other Applications (2003), by W. Nelson
+-    Reliability Analysis Using MINITAB and Python (2022), by J. Hwang. This textbook provides many examples using `reliability` and also a few examples with `surpyval`. The version of `reliability` used in the book is 0.8.1 which is significantly different from the most recent version.
 -    Reliasoft has compiled a much more comprehensive `list of textbooks <https://www.weibull.com/knowledge/books.htm>`_.
 -    The reliability analytics toolkit (linked below in free online tools and calculators) has also compiled a much more comprehensive `list of textbooks <https://reliabilityanalyticstoolkit.appspot.com/static/books.htm#0486438678>`_.
 
@@ -35,7 +36,6 @@ The listing of a software package here does not imply my endorsement, and is onl
 -    `Reliasoft <https://www.reliasoft.com/products/reliability-analysis/weibull>`_ - the industry leader for reliability engineering software.
 -    `SAS JMP <https://www.jmp.com/en_us/software/predictive-analytics-software.html>`_ - lots of statistical tools for data modelling and visualization. A few purpose built reliability tools. Its utility for reliability engineering will depend on your application. SAS has also released the `SAS University Edition <https://www.sas.com/en_us/software/university-edition.html>`_ which is a free software package that runs in VirtualBox and offers a reduced set of tools compared to the paid package.
 -    `PTC Windchill <https://www.ptc.com/en/products/plm/capabilities/quality/>`_ - a powerful tool for risk and reliability. Similar to Reliasoft but it forms one part of the larger PTC suite of tools.
--    `RAMS Mentat <https://rams-mentat.com/dataanalysis/>`_ - a software application powered by WeibullR (a free R software library). It fits weibull2p, weibull3p, lognormal2p and lognormal3p distributions and their confidence intervals.
 -    `Isograph Reliability Workbench <https://www.isograph.com/software/reliability-workbench/>`_ - A collection of tools designed specifically for reliability engineering.
 -    `Item Software <https://www.itemsoft.com/reliability_prediction.html>`_ - A collection of tools for reliability engineering including FMECA, fault trees, reliability prediction, and many others.
 -    `SuperSMITH <https://fultonfindings.com/>`_ - This software is designed specifically for reliability engineering and has many useful tools. The user interface looks like it is from the early 1990s but the methods used are no less relevant today. This software was developed alongside the New Weibull Handbook, an excellent resource for interpreting the results of reliability engineering software.
